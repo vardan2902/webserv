@@ -61,6 +61,7 @@ void Parser::parseServer()
 
     _servers.push_back(server);
 }
+
 void Parser::parseLocation(Server& server)
 {
     expect(Word, LOCATION_KEYWORD);
