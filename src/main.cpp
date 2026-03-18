@@ -26,7 +26,7 @@ void printServerConfig(const std::vector<Server>& servers) {
 int main(int argc, char** argv) {
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <config_file>\n";
-        return 1;
+        return EXIT_FAILURE;
     }
 
     try {
@@ -52,5 +52,5 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    return 0;
+    return EXIT_SUCCESS;
 }
