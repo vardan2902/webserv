@@ -1,7 +1,6 @@
 #include "webserv.hpp"
 
-std::string readConfigFile(const std::string& path)
-{
+std::string readConfigFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open())
         throw std::runtime_error("Failed to open config file: " + path);
@@ -11,8 +10,7 @@ std::string readConfigFile(const std::string& path)
     return buffer.str();
 }
 
-void printServerConfig(const std::vector<Server>& servers)
-{
+void printServerConfig(const std::vector<Server>& servers) {
     for (const auto& server : servers) {
         std::cout << "Server port: " << server.port
                   << " root: " << server.root << "\n";
@@ -25,8 +23,7 @@ void printServerConfig(const std::vector<Server>& servers)
     }
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <config_file>\n";
         return 1;
@@ -46,13 +43,13 @@ int main(int argc, char** argv)
         printServerConfig(parser.getServers());
     } catch (const ValidationException& e) {
         std::cerr << "Validation error: " << e.what() << "\n";
-        return 1;
+        return EXIT_FAILURE;
     } catch (const ParserException& e) {
         std::cerr << "Config parse error: " << e.what() << "\n";
-        return 1;
+        return EXIT_FAILURE;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
-        return 1;
+        return EXIT_FAILURE;
     }
 
     return 0;
