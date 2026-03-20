@@ -8,7 +8,7 @@
 class ITokenizer
 {
 public:
-    virtual ~ITokenizer() {}
+    virtual ~ITokenizer();
 
     virtual void tokenize() = 0;
     virtual const std::vector<Token>& getTokens() const = 0;

@@ -1,0 +1,26 @@
+# Compiled Object files
+*.o
+*.obj
+
+# Executables
+webserv
+*.out
+*.exe
+
+# Dependency files
+*.d
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS specific
+Thumbs.db
+
+# Debug files
+*.dSYM/
+*.su
