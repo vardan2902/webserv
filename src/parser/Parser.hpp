@@ -16,8 +16,7 @@
 #define ROOT_DIRECTIVE "root"
 #define INDEX_DIRECTIVE "index"
 
-class Parser
-{
+class Parser {
 private:
     ITokenizer& _tokenizer;
     std::vector<Server> _servers;

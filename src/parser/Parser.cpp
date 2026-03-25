@@ -15,10 +15,8 @@ Parser& Parser::operator=(const Parser& other) {
 }
 Parser::~Parser() {}
 
-void Parser::parse()
-{
-    while (_tokenizer.hasNext())
-    {
+void Parser::parse() {
+    while (_tokenizer.hasNext()) {
         Token tok = _tokenizer.peekToken();
 
         if (tok.is(Word) && tok.value == SERVER_KEYWORD)
@@ -30,24 +28,20 @@ void Parser::parse()
     }
 }
 
-const std::vector<Server>& Parser::getServers() const
-{
+const std::vector<Server>& Parser::getServers() const {
     return _servers;
 }
 
-void Parser::parseServer()
-{
+void Parser::parseServer() {
     expect(Word, SERVER_KEYWORD);
     expect(LBrace);
 
     Server server;
 
-    while (true)
-    {
+    while (true) {
         Token tok = _tokenizer.peekToken();
 
-        if (tok.is(RBrace))
-        {
+        if (tok.is(RBrace)) {
             _tokenizer.nextToken();
             break;
         }
@@ -62,8 +56,7 @@ void Parser::parseServer()
     _servers.push_back(server);
 }
 
-void Parser::parseLocation(Server& server)
-{
+void Parser::parseLocation(Server& server) {
     expect(Word, LOCATION_KEYWORD);
     Token pathTok = expect(Word, EMPTY_STRING, "Expected location path after 'location'");
     
@@ -72,12 +65,10 @@ void Parser::parseLocation(Server& server)
 
     expect(LBrace, EMPTY_STRING, "Expected '{' after location path");
 
-    while (true)
-    {
+    while (true) {
         Token tok = _tokenizer.peekToken();
 
-        if (tok.is(RBrace))
-        {
+        if (tok.is(RBrace)) {
             _tokenizer.nextToken();
             break;
         }
@@ -90,8 +81,7 @@ void Parser::parseLocation(Server& server)
     server.locations.push_back(loc);
 }
 
-void Parser::parseDirective(Server& server)
-{
+void Parser::parseDirective(Server& server) {
     Token keyTok = expect(Word, EMPTY_STRING, "Expected server directive");
     Token valueTok = expect(Word, EMPTY_STRING, "Expected value for directive '" + keyTok.value + "'");
     expect(Semicolon, EMPTY_STRING, "Missing semicolon for directive '" + keyTok.value + "'");
@@ -99,14 +89,10 @@ void Parser::parseDirective(Server& server)
     const std::string& key = keyTok.value;
     const std::string& value = valueTok.value;
 
-    if (key == LISTEN_DIRECTIVE)
-    {
-        try
-        {
+    if (key == LISTEN_DIRECTIVE) {
+        try {
             server.port = std::stoi(value);
-        }
-        catch (...)
-        {
+        } catch (...) {
             throw ParserException("Invalid port value: " + value);
         }
     }
@@ -116,8 +102,7 @@ void Parser::parseDirective(Server& server)
         throw ParserException("Unknown server directive: " + key);
 }
 
-void Parser::parseLocationDirective(Location& loc)
-{
+void Parser::parseLocationDirective(Location& loc) {
     Token keyTok   = expect(Word, EMPTY_STRING, "Expected location directive");
     Token valueTok = expect(Word, EMPTY_STRING, "Expected value for location directive '" + keyTok.value + "'");
     expect(Semicolon, EMPTY_STRING, "Missing semicolon for location directive '" + keyTok.value + "'");
@@ -133,12 +118,10 @@ void Parser::parseLocationDirective(Location& loc)
         throw ParserException("Unknown location directive: " + key);
 }
 
-Token Parser::expect(Type type, const std::string& expectedValue, const std::string& errorMessage)
-{
+Token Parser::expect(Type type, const std::string& expectedValue, const std::string& errorMessage) {
     Token tok = _tokenizer.nextToken();
 
-    if (!tok.is(type) || (!expectedValue.empty() && tok.value != expectedValue))
-    {
+    if (!tok.is(type) || (!expectedValue.empty() && tok.value != expectedValue)) {
         if (!errorMessage.empty())
             throw ParserException(errorMessage + ", got: " + tok.value);
         else if (!expectedValue.empty())

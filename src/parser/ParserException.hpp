@@ -3,8 +3,7 @@
 #include <exception>
 #include <string>
 
-class ParserException : public std::exception
-{
+class ParserException : public std::exception {
 private:
     std::string _message;
 

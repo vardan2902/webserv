@@ -8,9 +8,7 @@
 
 enum Type { Word, LBrace, RBrace, Semicolon, EndOfFile };
 
-
-class Token
-{
+class Token {
 public:
     Type type;
     std::string value;

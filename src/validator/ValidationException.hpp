@@ -3,8 +3,7 @@
 #include <exception>
 #include <string>
 
-class ValidationException : public std::exception
-{
+class ValidationException : public std::exception {
 private:
     std::string _message;
 

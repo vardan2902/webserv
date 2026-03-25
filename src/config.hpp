@@ -4,15 +4,13 @@
 
 #define DEFAULT_PORT 80
 
-struct Location
-{
+struct Location {
     std::string path;
     std::string root;
     std::string index;
 };
 
-struct Server
-{
+struct Server {
     int port = DEFAULT_PORT;
     std::string root;
     std::vector<Location> locations;
