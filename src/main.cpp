@@ -13,19 +13,6 @@ std::string readConfigFile(const std::string& path) {
     return buffer.str();
 }
 
-void printServerConfig(const std::vector<Server>& servers) {
-    for (const auto& server : servers) {
-        std::cout << "Server port: " << server.port
-                  << " root: " << server.root << "\n";
-
-        for (const auto& loc : server.locations) {
-            std::cout << "  Location " << loc.path
-                      << " root: " << loc.root
-                      << " index: " << loc.index << "\n";
-        }
-    }
-}
-
 int main(int argc, char** argv) {
     Logger logger;
 
@@ -51,8 +38,7 @@ int main(int argc, char** argv) {
         ListenerFactory listenerFactory;
         ServerManager& sm = ServerManager::getInstance(listenerFactory, servers, logger);
         sm.initializeListeningSockets();
-
-        printServerConfig(parser.getServers());
+        sm.registerWithEventLoop();
     } catch (const ValidationException& e) {
         std::string err(e.what());
         logger.error("Validation error: " + err);

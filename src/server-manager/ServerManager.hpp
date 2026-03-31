@@ -4,9 +4,14 @@
 #include <vector>
 #include <iostream>
 #include <ostream>
+#include <unistd.h>
 
 #include "ServerException.hpp"
 #include "../listener-factory/IListenerFactory.hpp"
+#include "../http/request-parser/RequestParser.hpp"
+#include "../http/request-parser/RequestParserException.hpp"
+#include "../http/router/Router.hpp"
+#include "../http/response-manager/ResponseManager.hpp"
 #include "IServerManager.hpp"
 #include "../logger/ILogger.hpp"
 #include "../config.hpp"
@@ -19,7 +24,7 @@ private:
 	IListenerFactory&     _listenerFactory;
 	std::vector<Server>&  _servers;
 	std::map<int, IListener*>  _fdToListener;
-	std::map<int, Server&>  _fdToServer;
+	std::map<int, Server*>  _fdToServer;
 
 	ServerManager(IListenerFactory&, std::vector<Server>&, ILogger&);
 	ServerManager(const ServerManager&);
