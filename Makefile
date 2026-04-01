@@ -1,6 +1,9 @@
 # Compiler and flags
 CXX = c++
 CXXFLAGS = -Wall -Wextra -Werror -std=c++11 -I./src # change to 98
+ifeq ($(shell uname), Darwin)
+	CXXFLAGS += -isysroot $(shell xcrun --sdk macosx --show-sdk-path)
+endif
 
 # Directories
 SRC_DIR = src
@@ -46,5 +49,12 @@ fclean: clean
 # Rebuild everything
 re: fclean all
 
+# Docker targets
+docker-build:
+	docker build -t webserv .
+
+docker-run:
+	docker run --rm -it -p 8080:8080 webserv
+
 # Phony targets
-.PHONY: all clean fclean re
+.PHONY: all clean fclean re docker-build docker-run

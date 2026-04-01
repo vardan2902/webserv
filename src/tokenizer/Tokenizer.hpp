@@ -11,8 +11,7 @@
 #define NEW_LINE '\n'
 #define EMPTY_STRING ""
 
-class Tokenizer : public ITokenizer
-{
+class Tokenizer : public ITokenizer {
 private:
     std::string _input;
     std::vector<Token> _tokens;

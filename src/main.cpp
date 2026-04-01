@@ -1,4 +1,7 @@
 #include "webserv.hpp"
+#include "listener-factory/ListenerFactory.hpp"
+#include "logger/Logger.hpp"
+#include "server-manager/ServerManager.hpp"
 
 std::string readConfigFile(const std::string& path) {
     std::ifstream file(path);
@@ -10,22 +13,12 @@ std::string readConfigFile(const std::string& path) {
     return buffer.str();
 }
 
-void printServerConfig(const std::vector<Server>& servers) {
-    for (const auto& server : servers) {
-        std::cout << "Server port: " << server.port
-                  << " root: " << server.root << "\n";
-
-        for (const auto& loc : server.locations) {
-            std::cout << "  Location " << loc.path
-                      << " root: " << loc.root
-                      << " index: " << loc.index << "\n";
-        }
-    }
-}
-
 int main(int argc, char** argv) {
+    Logger logger;
+
     if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <config_file>\n";
+        std::string name(argv[0]);
+        logger.error("Usage: " + name + " <config_file>");
         return EXIT_FAILURE;
     }
 
@@ -38,19 +31,31 @@ int main(int argc, char** argv) {
         Parser parser(tokenizer);
         parser.parse();
 
-        Validator::validate(parser.getServers());
+        std::vector<Server> servers = parser.getServers();
 
-        printServerConfig(parser.getServers());
+        Validator::validate(servers);
+
+        ListenerFactory listenerFactory;
+        ServerManager& sm = ServerManager::getInstance(listenerFactory, servers, logger);
+        sm.initializeListeningSockets();
+        sm.registerWithEventLoop();
     } catch (const ValidationException& e) {
-        std::cerr << "Validation error: " << e.what() << "\n";
+        std::string err(e.what());
+        logger.error("Validation error: " + err);
+        ServerManager::destroyInstance();
         return EXIT_FAILURE;
     } catch (const ParserException& e) {
-        std::cerr << "Config parse error: " << e.what() << "\n";
+        std::string err(e.what());
+        logger.error("Config parse error: " + err);
+        ServerManager::destroyInstance();
         return EXIT_FAILURE;
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << "\n";
+        std::string err(e.what());
+        logger.error("Error: " + err);
+        ServerManager::destroyInstance();
         return EXIT_FAILURE;
     }
 
+    ServerManager::destroyInstance();
     return EXIT_SUCCESS;
 }
