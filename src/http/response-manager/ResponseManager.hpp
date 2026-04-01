@@ -18,7 +18,6 @@ public:
 
 private:
 	HttpResponse  _collect(const HttpRequest& req, const Server& server, const Location* location) const;
-	void          _write(int clientFd, const HttpResponse& response) const;
 	std::string   build_raw(const HttpResponse& response) const;
 	std::string   _statusMessage(int statusCode) const;
 };

@@ -43,11 +43,6 @@ HttpResponse ResponseManager::_collect(const HttpRequest& req, const Server& ser
 	return response;
 }
 
-void ResponseManager::_write(int clientFd, const HttpResponse& response) const {
-	std::string raw = build_raw(response);
-	::write(clientFd, raw.c_str(), raw.size());
-}
-
 std::string ResponseManager::build_raw(const HttpResponse& response) const {
 	std::ostringstream oss;
 	oss << "HTTP/1.1 " << response.statusCode << " " << _statusMessage(response.statusCode) << "\r\n"
