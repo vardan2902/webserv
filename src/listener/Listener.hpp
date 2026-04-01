@@ -5,6 +5,7 @@
 
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/fcntl.h>
 
 class Listener : public IListener {
 private:
