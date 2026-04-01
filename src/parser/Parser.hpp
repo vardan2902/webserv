@@ -15,6 +15,8 @@
 #define LISTEN_DIRECTIVE "listen"
 #define ROOT_DIRECTIVE "root"
 #define INDEX_DIRECTIVE "index"
+#define CGI_DIRECTIVE "cgi"
+#define ERROR_PAGE_DIRECTIVE "error_page"
 
 class Parser {
 private:

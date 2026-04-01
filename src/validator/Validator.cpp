@@ -20,7 +20,7 @@ void Validator::validate(const std::vector<Server>& servers) {
                 throw ValidationException("Duplicate location path: " + loc.path);
             if (loc.root.empty())
                 throw ValidationException("Location root cannot be empty");
-            if (loc.index.empty())
+            if (loc.index.empty() && loc.cgiHandlers.empty())
                 throw ValidationException("Location index cannot be empty");
         }
     }

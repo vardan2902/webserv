@@ -3,6 +3,7 @@
 #include <string>
 
 #include "IResponseManager.hpp"
+#include "../cgi/CgiHandler.hpp"
 
 class ResponseManager : public IResponseManager {
 public:
@@ -15,6 +16,7 @@ public:
 
 private:
 	HttpResponse  _collect(const HttpRequest& req, const Server& server, const Location* location) const;
+	HttpResponse  _errorResponse(int code, const Server& server) const;
 	void          _write(int clientFd, const HttpResponse& response) const;
 	std::string   _statusMessage(int statusCode) const;
 };

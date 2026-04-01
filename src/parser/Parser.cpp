@@ -84,10 +84,23 @@ void Parser::parseLocation(Server& server) {
 void Parser::parseDirective(Server& server) {
     Token keyTok = expect(Word, EMPTY_STRING, "Expected server directive");
     Token valueTok = expect(Word, EMPTY_STRING, "Expected value for directive '" + keyTok.value + "'");
-    expect(Semicolon, EMPTY_STRING, "Missing semicolon for directive '" + keyTok.value + "'");
 
-    const std::string& key = keyTok.value;
+    const std::string& key   = keyTok.value;
     const std::string& value = valueTok.value;
+
+    if (key == ERROR_PAGE_DIRECTIVE) {
+        Token pathTok = expect(Word, EMPTY_STRING, "Expected file path for error_page directive");
+        expect(Semicolon, EMPTY_STRING, "Missing semicolon for error_page directive");
+        try {
+            int code = std::stoi(value);
+            server.errorPages[code] = pathTok.value;
+        } catch (...) {
+            throw ParserException("Invalid status code for error_page: " + value);
+        }
+        return;
+    }
+
+    expect(Semicolon, EMPTY_STRING, "Missing semicolon for directive '" + keyTok.value + "'");
 
     if (key == LISTEN_DIRECTIVE) {
         try {
@@ -105,10 +118,18 @@ void Parser::parseDirective(Server& server) {
 void Parser::parseLocationDirective(Location& loc) {
     Token keyTok   = expect(Word, EMPTY_STRING, "Expected location directive");
     Token valueTok = expect(Word, EMPTY_STRING, "Expected value for location directive '" + keyTok.value + "'");
-    expect(Semicolon, EMPTY_STRING, "Missing semicolon for location directive '" + keyTok.value + "'");
 
     const std::string& key   = keyTok.value;
     const std::string& value = valueTok.value;
+
+    if (key == CGI_DIRECTIVE) {
+        Token interpreterTok = expect(Word, EMPTY_STRING, "Expected interpreter path for cgi directive");
+        expect(Semicolon, EMPTY_STRING, "Missing semicolon for cgi directive");
+        loc.cgiHandlers[value] = interpreterTok.value;
+        return;
+    }
+
+    expect(Semicolon, EMPTY_STRING, "Missing semicolon for location directive '" + keyTok.value + "'");
 
     if (key == ROOT_DIRECTIVE)
         loc.root = value;

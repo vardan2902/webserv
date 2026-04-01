@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>webserv – About</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/about.html">About</a>
+    <a href="/contact.html">Contact</a>
+    <a href="/cgi-bin/hello.py">CGI Hello</a>
+    <a href="/cgi-bin/env.py">CGI Env</a>
+    <a href="/cgi-bin/post.py">CGI POST</a>
+  </nav>
+  <main>
+    <h1>About</h1>
+    <p>This server is a 42 school project implementing a subset of the HTTP/1.1 protocol.</p>
+    <h2>Architecture</h2>
+    <ul>
+      <li><strong>EventLoop</strong> – epoll-based multiplexed I/O</li>
+      <li><strong>RequestParser</strong> – parses raw HTTP/1.1 requests</li>
+      <li><strong>Router</strong> – longest-prefix location matching</li>
+      <li><strong>ResponseManager</strong> – serves static files or dispatches CGI</li>
+      <li><strong>CgiHandler</strong> – fork/exec with environment setup per CGI/1.1</li>
+    </ul>
+    <h2>Supported directives</h2>
+    <table>
+      <tr><th>Directive</th><th>Scope</th><th>Description</th></tr>
+      <tr><td>listen</td><td>server</td><td>TCP port to bind</td></tr>
+      <tr><td>root</td><td>server, location</td><td>Document root directory</td></tr>
+      <tr><td>index</td><td>location</td><td>Default file for directory requests</td></tr>
+      <tr><td>cgi</td><td>location</td><td>Map file extension to CGI interpreter</td></tr>
+    </table>
+  </main>
+</body>
+</html>

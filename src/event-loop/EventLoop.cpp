@@ -1,3 +1,4 @@
+#include <sstream>
 #include "EventLoop.hpp"
 
 int EventLoop::_epollFd = -1;
@@ -24,12 +25,42 @@ void EventLoop::registerListeners(std::map<int, IListener *>& fdToListener) {
 }
 
 std::string EventLoop::_readRequest(int clientFd) {
-	char buffer[32000];
-	ssize_t bytesRead = read(clientFd, buffer, sizeof(buffer) - 1);
-	if (bytesRead == -1)
-		throw EventLoopException("Request Read Failed");
-	buffer[bytesRead] = '\0';
-	return std::string(buffer, bytesRead);
+	std::string raw;
+	char        buf[4096];
+
+	// Read until we have the full header section
+	while (raw.find("\r\n\r\n") == std::string::npos) {
+		ssize_t n = read(clientFd, buf, sizeof(buf));
+		if (n <= 0)
+			break;
+		raw.append(buf, static_cast<size_t>(n));
+	}
+
+	// Determine expected body length from Content-Length header
+	size_t headerEnd = raw.find("\r\n\r\n");
+	if (headerEnd == std::string::npos)
+		return raw;
+
+	size_t bodyStart = headerEnd + 4;
+	size_t contentLength = 0;
+
+	const std::string clKey = "Content-Length: ";
+	size_t clPos = raw.find(clKey);
+	if (clPos != std::string::npos && clPos < headerEnd) {
+		size_t clEnd = raw.find("\r\n", clPos);
+		std::istringstream ss(raw.substr(clPos + clKey.size(), clEnd - clPos - clKey.size()));
+		ss >> contentLength;
+	}
+
+	// Keep reading until the full body arrives
+	while (raw.size() < bodyStart + contentLength) {
+		ssize_t n = read(clientFd, buf, sizeof(buf));
+		if (n <= 0)
+			break;
+		raw.append(buf, static_cast<size_t>(n));
+	}
+
+	return raw;
 }
 
 void EventLoop::_dispatch(int clientFd, const std::string& raw, Server& server) {
