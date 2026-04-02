@@ -9,5 +9,6 @@ private:
 
 public:
 	explicit ListenerException(const std::string& message);
-	virtual const char* what() const noexcept;
+	virtual ~ListenerException() throw() {}
+	virtual const char* what() const throw();
 };

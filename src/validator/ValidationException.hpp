@@ -9,5 +9,6 @@ private:
 
 public:
     explicit ValidationException(const std::string& message);
-    virtual const char* what() const noexcept;
+	virtual ~ValidationException() throw() {}
+    virtual const char* what() const throw();
 };

@@ -4,7 +4,7 @@
 
 int EventLoop::_epollFd = -1;
 std::map<int, Server*>* EventLoop::_fdToServer = NULL;
-std::unordered_map<int, Connection> EventLoop::_connections;
+std::map<int, Connection> EventLoop::_connections;
 
 void EventLoop::initPoll() {
 	_epollFd = epoll_create(1);
@@ -75,7 +75,8 @@ static bool _bodyComplete(const std::string& buf, size_t headerEnd) {
 		return false;
 
 	size_t contentLength = 0;
-	std::istringstream(headers.substr(valueStart, valueEnd - valueStart)) >> contentLength;
+	std::istringstream iss(headers.substr(valueStart, valueEnd - valueStart));
+	iss >> contentLength;
 	return buf.size() >= headerEnd + contentLength;
 }
 
@@ -105,10 +106,36 @@ void EventLoop::_handleRead(Connection& conn) {
 	_processRequest(conn);
 }
 
+static std::string _buildResponse(int code, const std::string& msg, const std::string& body) {
+	std::ostringstream oss;
+	oss << "HTTP/1.1 " << code << " " << msg << "\r\n"
+	    << "Content-Length: " << body.size() << "\r\n"
+	    << "Content-Type: text/html\r\n"
+	    << "\r\n"
+	    << body;
+	return oss.str();
+}
+
+void EventLoop::_rejectOversizedBody(Connection& conn) {
+	conn.out_buffer = _buildResponse(413, "Content Too Large", "413 Content Too Large");
+	conn.in_buffer.clear();
+	conn.bytes_sent = 0;
+	conn.state = WRITING;
+	epoll_event ev;
+	ev.events = EPOLLOUT;
+	ev.data.fd = conn.fd;
+	epoll_ctl(_epollFd, EPOLL_CTL_MOD, conn.fd, &ev);
+}
+
 void EventLoop::_processRequest(Connection& conn) {
 	RequestParser parser;
 	parser.feed(conn.in_buffer);
 	HttpRequest req = parser.parse();
+
+	if (conn.server->clientMaxBodySize > 0 && req.body.size() > conn.server->clientMaxBodySize) {
+		_rejectOversizedBody(conn);
+		return;
+	}
 
 	Router router;
 	const Location* location = router.route(*conn.server, req.path);
@@ -171,7 +198,7 @@ void EventLoop::run(std::map<int, Server*>& fdToServer) {
 					continue;
 				}
 
-				std::unordered_map<int, Connection>::iterator connection = _connections.find(fd);
+				std::map<int, Connection>::iterator connection = _connections.find(fd);
 				if (connection == _connections.end())
 					continue;
 

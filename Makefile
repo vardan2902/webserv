@@ -1,6 +1,6 @@
 # Compiler and flags
 CXX = c++
-CXXFLAGS = -Wall -Wextra -Werror -std=c++11 -I./src # change to 98
+CXXFLAGS = -Wall -Wextra -Werror -std=c++98 -I./src
 ifeq ($(shell uname), Darwin)
 	CXXFLAGS += -isysroot $(shell xcrun --sdk macosx --show-sdk-path)
 endif

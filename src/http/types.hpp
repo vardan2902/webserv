@@ -14,4 +14,5 @@ struct HttpRequest {
 struct HttpResponse {
 	int         statusCode;
 	std::string body;
+	std::map<std::string, std::string> headers;
 };
