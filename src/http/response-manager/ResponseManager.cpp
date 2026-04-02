@@ -1,7 +1,3 @@
-#include <fstream>
-#include <sstream>
-#include <unistd.h>
-
 #include "ResponseManager.hpp"
 
 ResponseManager::ResponseManager() {}
@@ -47,20 +43,17 @@ HttpResponse ResponseManager::_collect(const HttpRequest& req, const Server& ser
 	return response;
 }
 
-void ResponseManager::_write(int clientFd, const HttpResponse& response) const {
+std::string ResponseManager::build_raw(const HttpResponse& response) const {
 	std::ostringstream oss;
-
 	oss << "HTTP/1.1 " << response.statusCode << " " << _statusMessage(response.statusCode) << "\r\n"
 	    << "Content-Length: " << response.body.size() << "\r\n"
 	    << "Content-Type: text/html\r\n"
 	    << "\r\n"
 	    << response.body;
-
-	std::string raw = oss.str();
-	::write(clientFd, raw.c_str(), raw.size());
+	return oss.str();
 }
 
-void ResponseManager::respond(int clientFd, const HttpRequest& req, const Server& server, const Location* location) const {
+std::string ResponseManager::build(const HttpRequest& req, const Server& server, const Location* location) const {
 	HttpResponse response = _collect(req, server, location);
-	_write(clientFd, response);
+	return build_raw(response);
 }

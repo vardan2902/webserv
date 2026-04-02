@@ -1,6 +1,10 @@
 #include "EventLoop.hpp"
 
+#include "../listener-factory/utils/ListenerUtils.hpp"
+
 int EventLoop::_epollFd = -1;
+std::map<int, Server*>* EventLoop::_fdToServer = NULL;
+std::unordered_map<int, Connection> EventLoop::_connections;
 
 void EventLoop::initPoll() {
 	_epollFd = epoll_create(1);
@@ -10,10 +14,9 @@ void EventLoop::initPoll() {
 
 void EventLoop::registerListener(const std::pair<const int, IListener *>& socket) {
 	int fd = socket.first;
-	IListener* listener = socket.second;
 	struct epoll_event ev;
 	ev.events = EPOLLIN;
-	ev.data.ptr = listener;
+	ev.data.fd = fd;
 	if (epoll_ctl(_epollFd, EPOLL_CTL_ADD, fd, &ev) == -1)
 		throw EventLoopException("epoll_ctl() failed");
 }
@@ -23,49 +26,160 @@ void EventLoop::registerListeners(std::map<int, IListener *>& fdToListener) {
 		EventLoop::registerListener(*it);
 }
 
-std::string EventLoop::_readRequest(int clientFd) {
-	char buffer[32000];
-	ssize_t bytesRead = read(clientFd, buffer, sizeof(buffer) - 1);
-	if (bytesRead == -1)
-		throw EventLoopException("Request Read Failed");
-	buffer[bytesRead] = '\0';
-	return std::string(buffer, bytesRead);
+void EventLoop::_handleAcceptConnection(int fd) {
+	while (true) {
+		try {
+			int client_fd = ::accept(fd, NULL, NULL);
+			if (client_fd < 0)
+				return;
+
+			ListenerUtils::setNonBlocking(client_fd);
+
+			epoll_event ev;
+			ev.events = EPOLLIN;
+			ev.data.fd = client_fd;
+
+			epoll_ctl(_epollFd, EPOLL_CTL_ADD, client_fd, &ev);
+
+			Connection conn;
+			conn.fd = client_fd;
+			conn.state = READING;
+			conn.bytes_sent = 0;
+			conn.server = (*_fdToServer)[fd];
+
+			_connections[client_fd] = conn;
+		} catch (const EventLoopException& e) {
+			std::cout << e.what() << std::endl;
+		}
+	}
 }
 
-void EventLoop::_dispatch(int clientFd, const std::string& raw, Server& server) {
+static bool _headersComplete(const std::string& buf, size_t& headerEnd) {
+	size_t pos = buf.find("\r\n\r\n");
+	if (pos == std::string::npos)
+		return false;
+	headerEnd = pos + 4;
+	return true;
+}
+
+static bool _bodyComplete(const std::string& buf, size_t headerEnd) {
+	std::string headers = buf.substr(0, headerEnd);
+	std::string clKey = "Content-Length: ";
+	size_t clPos = headers.find(clKey);
+	if (clPos == std::string::npos)
+		return true;
+
+	size_t valueStart = clPos + clKey.length();
+	size_t valueEnd = headers.find("\r\n", valueStart);
+	if (valueEnd == std::string::npos)
+		return false;
+
+	size_t contentLength = 0;
+	std::istringstream(headers.substr(valueStart, valueEnd - valueStart)) >> contentLength;
+	return buf.size() >= headerEnd + contentLength;
+}
+
+void EventLoop::_closeConnection(int fd) {
+	epoll_ctl(_epollFd, EPOLL_CTL_DEL, fd, NULL);
+	close(fd);
+	_connections.erase(fd);
+}
+
+void EventLoop::_handleRead(Connection& conn) {
+	char buf[BUFFER_SIZE];
+
+	ssize_t bytes = read(conn.fd, buf, sizeof(buf));
+	if (bytes <= 0) {
+		_closeConnection(conn.fd);
+		return;
+	}
+
+	conn.in_buffer.append(buf, bytes);
+
+	size_t headerEnd = 0;
+	if (!_headersComplete(conn.in_buffer, headerEnd))
+		return;
+	if (!_bodyComplete(conn.in_buffer, headerEnd))
+		return;
+
+	_processRequest(conn);
+}
+
+void EventLoop::_processRequest(Connection& conn) {
 	RequestParser parser;
-	parser.feed(raw);
+	parser.feed(conn.in_buffer);
 	HttpRequest req = parser.parse();
 
 	Router router;
-	const Location* loc = router.route(server, req.path);
+	const Location* location = router.route(*conn.server, req.path);
 
-	ResponseManager responseManager;
-	responseManager.respond(clientFd, req, server, loc);
+	ResponseManager rm;
+	conn.out_buffer = rm.build(req, *conn.server, location);
+	conn.in_buffer.clear();
+	conn.bytes_sent = 0;
+	conn.state = WRITING;
+
+	epoll_event ev;
+	ev.events = EPOLLOUT;
+	ev.data.fd = conn.fd;
+	epoll_ctl(_epollFd, EPOLL_CTL_MOD, conn.fd, &ev);
 }
 
-void EventLoop::_handleEvent(const epoll_event& ev, std::map<int, Server*>& fdToServer) {
-	IListener* listener = reinterpret_cast<IListener*>(ev.data.ptr);
-	int serverFd = listener->fd();
-	int clientFd = listener->accept();
-	Server* server = fdToServer[serverFd];
+void EventLoop::_handleWrite(Connection& conn) {
+	const char* data = conn.out_buffer.c_str() + conn.bytes_sent;
+	size_t remaining = conn.out_buffer.size() - conn.bytes_sent;
 
-	std::string raw = _readRequest(clientFd);
-	_dispatch(clientFd, raw, *server);
-	close(clientFd);
+	ssize_t sent = write(conn.fd, data, remaining);
+	if (sent < 0) {
+		_closeConnection(conn.fd);
+		return;
+	}
+
+	conn.bytes_sent += sent;
+	if (conn.bytes_sent < conn.out_buffer.size())
+		return;
+
+	_resetToReading(conn);
+}
+
+void EventLoop::_resetToReading(Connection& conn) {
+	conn.out_buffer.clear();
+	conn.bytes_sent = 0;
+	conn.state = READING;
+
+	epoll_event ev;
+	ev.events = EPOLLIN;
+	ev.data.fd = conn.fd;
+	epoll_ctl(_epollFd, EPOLL_CTL_MOD, conn.fd, &ev);
 }
 
 void EventLoop::run(std::map<int, Server*>& fdToServer) {
+	_fdToServer = &fdToServer;
+	struct epoll_event events[MAX_EVENTS];
+
 	while (true) {
 		try {
-			struct epoll_event events[1024];
 			int n = epoll_wait(_epollFd, events, 1024, -1);
-
 			if (n == -1)
 				throw EventLoopException("epoll_wait() failed");
 
-			for (int i = 0; i < n; ++i)
-				EventLoop::_handleEvent(events[i], fdToServer);
+			for (int i = 0; i < n; ++i) {
+				int fd = events[i].data.fd;
+
+				if (fdToServer.find(fd) != fdToServer.end()) {
+					_handleAcceptConnection(fd);
+					continue;
+				}
+
+				std::unordered_map<int, Connection>::iterator connection = _connections.find(fd);
+				if (connection == _connections.end())
+					continue;
+
+				if (events[i].events & EPOLLIN)
+					_handleRead(connection->second);
+				else if (events[i].events & EPOLLOUT)
+					_handleWrite(connection->second);
+			}
 		} catch (EventLoopException& e) {
 			std::cout << e.what() << std::endl;
 		} catch (RequestParserException& e) {
