@@ -194,6 +194,12 @@ void Parser::_parseReturn(Location& loc) {
     loc.returnUrl = urlTok.value;
 }
 
+void Parser::_parseUploadStore(Location& loc) {
+    Token valueTok = expect(Word, EMPTY_STRING, "Expected path for 'upload_store'");
+    expect(Semicolon, EMPTY_STRING, "Missing semicolon for 'upload_store'");
+    loc.uploadStore = valueTok.value;
+}
+
 void Parser::parseLocationDirective(Location& loc) {
     Token keyTok = expect(Word, EMPTY_STRING, "Expected location directive");
     const std::string& key = keyTok.value;
@@ -208,6 +214,7 @@ void Parser::parseLocationDirective(Location& loc) {
         handlers[AUTOINDEX_DIRECTIVE]     = &Parser::_parseAutoindex;
         handlers[ALLOW_METHODS_DIRECTIVE] = &Parser::_parseAllowMethods;
         handlers[RETURN_DIRECTIVE]        = &Parser::_parseReturn;
+        handlers[UPLOAD_STORE_DIRECTIVE]  = &Parser::_parseUploadStore;
     }
 
     LocationHandlerMap::iterator it = handlers.find(key);

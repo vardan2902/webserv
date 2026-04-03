@@ -20,6 +20,7 @@
 #define CLIENT_MAX_BODY_SIZE_DIRECTIVE  "client_max_body_size"
 #define RETURN_DIRECTIVE                "return"
 #define AUTOINDEX_DIRECTIVE             "autoindex"
+#define UPLOAD_STORE_DIRECTIVE          "upload_store"
 
 class Parser {
 private:
@@ -43,6 +44,7 @@ private:
     void _parseAutoindex(Location&);
     void _parseAllowMethods(Location&);
     void _parseReturn(Location&);
+    void _parseUploadStore(Location&);
 
     Token expect(
         Type type,

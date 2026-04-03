@@ -15,6 +15,7 @@ std::string ResponseManager::_statusMessage(int statusCode) const {
 		case 404: return "Not Found";
 		case 405: return "Method Not Allowed";
 		case 500: return "Internal Server Error";
+		case 501: return "Not Implemented";
 		default:  return "Unknown";
 	}
 }
@@ -55,9 +56,144 @@ HttpResponse ResponseManager::_handleDelete(
 }
 
 HttpResponse ResponseManager::_handlePost(
-	const HttpRequest&, const Location*, const std::string&, const std::string&
+	const HttpRequest& req, const Location* location,
+	const std::string&, const std::string&
 ) const {
-	return _makeResponse(200);
+	if (!location || location->uploadStore.empty())
+		return _makeResponse(501, "501 Not Implemented");
+
+	std::map<std::string, std::string>::const_iterator ctIt =
+		req.headers.find("Content-Type");
+	if (ctIt == req.headers.end())
+		return _makeResponse(400, "400 Bad Request");
+
+	const std::string& ct = ctIt->second;
+	std::string boundaryPrefix = "boundary=";
+	size_t bpos = ct.find(boundaryPrefix);
+	if (ct.find("multipart/form-data") == std::string::npos || bpos == std::string::npos)
+		return _makeResponse(400, "400 Bad Request");
+
+	std::string boundary = ct.substr(bpos + boundaryPrefix.size());
+	size_t semi = boundary.find(';');
+	if (semi != std::string::npos)
+		boundary = boundary.substr(0, semi);
+	while (!boundary.empty() &&
+	       (boundary[boundary.size()-1] == '\r' || boundary[boundary.size()-1] == ' '))
+		boundary.erase(boundary.size()-1);
+
+	return _handleMultipart(req.body, boundary, location->uploadStore);
+}
+
+// ─── POST sub-handlers ───────────────────────────────────────────────────────
+
+bool ResponseManager::_parsePart(const std::string& raw, MultipartPart& out) const {
+	size_t sep = raw.find("\r\n\r\n");
+	if (sep == std::string::npos) return false;
+
+	std::string headers = raw.substr(0, sep);
+
+	size_t cdpos = headers.find("Content-Disposition:");
+	if (cdpos == std::string::npos) return false;
+
+	size_t cdend = headers.find("\r\n", cdpos);
+	std::string cdLine = headers.substr(
+		cdpos, cdend == std::string::npos ? std::string::npos : cdend - cdpos);
+
+	const std::string filenameKey = "filename=\"";
+	size_t fnpos = cdLine.find(filenameKey);
+	if (fnpos == std::string::npos) return false;
+	fnpos += filenameKey.size();
+	size_t fnend = cdLine.find('"', fnpos);
+	if (fnend == std::string::npos) return false;
+
+	std::string filename = cdLine.substr(fnpos, fnend - fnpos);
+	size_t sl = filename.rfind('/');
+	if (sl != std::string::npos) filename = filename.substr(sl + 1);
+	size_t bs = filename.rfind('\\');
+	if (bs != std::string::npos) filename = filename.substr(bs + 1);
+	if (filename.empty()) return false;
+
+	out.filename = filename;
+	out.body     = raw.substr(sep + 4);
+	return true;
+}
+
+bool ResponseManager::_splitParts(
+	const std::string& body,
+	const std::string& boundary,
+	std::vector<MultipartPart>& out
+) const {
+	std::string delim      = "\r\n--" + boundary;
+	std::string firstDelim = "--" + boundary;
+
+	size_t start = body.find(firstDelim);
+	if (start == std::string::npos) return false;
+	start += firstDelim.size();
+	if (start + 2 <= body.size() && body[start] == '\r' && body[start+1] == '\n')
+		start += 2;
+
+	while (true) {
+		size_t dpos = body.find(delim, start);
+		if (dpos == std::string::npos) break;
+
+		MultipartPart part;
+		if (_parsePart(body.substr(start, dpos - start), part))
+			out.push_back(part);
+
+		size_t afterDelim = dpos + delim.size();
+		if (afterDelim + 2 <= body.size() &&
+		    body[afterDelim] == '-' && body[afterDelim+1] == '-')
+			break;
+		if (afterDelim + 2 <= body.size() &&
+		    body[afterDelim] == '\r' && body[afterDelim+1] == '\n')
+			afterDelim += 2;
+		start = afterDelim;
+	}
+	return !out.empty();
+}
+
+bool ResponseManager::_writeFile(const std::string& dest, const std::string& data) const {
+	int fd = open(dest.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0) return false;
+
+	const char* ptr     = data.c_str();
+	size_t      total   = data.size();
+	size_t      written = 0;
+	while (written < total) {
+		ssize_t n = write(fd, ptr + written, total - written);
+		if (n < 0) { close(fd); return false; }
+		written += static_cast<size_t>(n);
+	}
+	close(fd);
+	return true;
+}
+
+HttpResponse ResponseManager::_handleMultipart(
+	const std::string& body,
+	const std::string& boundary,
+	const std::string& uploadStore
+) const {
+	std::vector<MultipartPart> parts;
+	if (!_splitParts(body, boundary, parts))
+		return _makeResponse(400, "400 Bad Request");
+
+	std::string lastFilename;
+	for (size_t i = 0; i < parts.size(); ++i) {
+		std::string dest = uploadStore;
+		if (dest[dest.size()-1] != '/') dest += '/';
+		dest += parts[i].filename;
+		if (!_writeFile(dest, parts[i].body))
+			return _makeResponse(500, "500 Internal Server Error");
+		lastFilename = parts[i].filename;
+	}
+
+	HttpResponse resp = _makeResponse(201);
+	resp.headers["Location"] = uploadStore + "/" + lastFilename;
+	resp.body = "<html><body>"
+	            "<h2>Upload successful: " + lastFilename + "</h2>"
+	            "<p><a href=\"/files/\">View uploaded files</a></p>"
+	            "</body></html>";
+	return resp;
 }
 
 HttpResponse ResponseManager::_handleGet(

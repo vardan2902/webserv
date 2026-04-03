@@ -54,7 +54,7 @@ docker-build:
 	docker build -t webserv .
 
 docker-run:
-	docker run --rm -it -p 8080:8080 webserv
+	docker run --rm -it -p 8080:8080 webserv bash
 
 # Phony targets
 .PHONY: all clean fclean re docker-build docker-run

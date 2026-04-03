@@ -5,10 +5,16 @@
 #include <sstream>
 #include <dirent.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "IResponseManager.hpp"
 
 class ResponseManager : public IResponseManager {
+	struct MultipartPart {
+		std::string filename;
+		std::string body;
+	};
+
 public:
 	ResponseManager();
 	ResponseManager(const ResponseManager&);
@@ -33,4 +39,10 @@ private:
 	// GET sub-handlers
 	HttpResponse  _serveDirectory(const HttpRequest&, const Location*, const std::string& filePath, const std::string& index) const;
 	HttpResponse  _serveFile     (const std::string& filePath) const;
+
+	// POST sub-handlers
+	HttpResponse  _handleMultipart(const std::string& body, const std::string& boundary, const std::string& uploadStore) const;
+	bool          _splitParts(const std::string& body, const std::string& boundary, std::vector<MultipartPart>& out) const;
+	bool          _parsePart(const std::string& raw, MultipartPart& out) const;
+	bool          _writeFile(const std::string& dest, const std::string& data) const;
 };

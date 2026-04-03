@@ -14,6 +14,7 @@ struct Location {
     std::string                 root;
     std::string                 index;
     std::vector<std::string>    allowMethods;
+    std::string                 uploadStore;
     Location() : autoindex(false), returnCode(0) {}
 };
 
