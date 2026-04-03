@@ -9,5 +9,6 @@ private:
 
 public:
 	explicit EventLoopException(const std::string& message);
-	virtual const char* what() const noexcept;
+	virtual ~EventLoopException() throw() {}
+	virtual const char* what() const throw();
 };

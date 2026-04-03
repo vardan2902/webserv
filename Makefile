@@ -1,6 +1,6 @@
 # Compiler and flags
 CXX = c++
-CXXFLAGS = -Wall -Wextra -Werror -std=c++11 -I./src # change to 98
+CXXFLAGS = -Wall -Wextra -Werror -std=c++98 -I./src
 ifeq ($(shell uname), Darwin)
 	CXXFLAGS += -isysroot $(shell xcrun --sdk macosx --show-sdk-path)
 endif
@@ -54,7 +54,7 @@ docker-build:
 	docker build -t webserv .
 
 docker-run:
-	docker run --rm -it -p 8080:8080 webserv
+	docker run --rm -it -p 8080:8080 webserv bash
 
 # Phony targets
 .PHONY: all clean fclean re docker-build docker-run

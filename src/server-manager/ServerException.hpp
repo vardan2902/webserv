@@ -9,5 +9,6 @@ private:
 
 public:
 	explicit ServerException(const std::string& message);
-	virtual const char* what() const noexcept;
+	virtual ~ServerException() throw() {}
+	virtual const char* what() const throw();
 };

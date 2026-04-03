@@ -9,5 +9,6 @@ private:
 
 public:
     explicit ParserException(const std::string& message);
-    virtual const char* what() const noexcept;
+	virtual ~ParserException() throw() {}
+    virtual const char* what() const throw();
 };

@@ -4,7 +4,7 @@
 #include "server-manager/ServerManager.hpp"
 
 std::string readConfigFile(const std::string& path) {
-    std::ifstream file(path);
+    std::ifstream file(path.c_str());
     if (!file.is_open())
         throw std::runtime_error("Failed to open config file: " + path);
 

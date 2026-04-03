@@ -1,13 +1,18 @@
 #include "Validator.hpp"
+#include <sstream>
 
 void Validator::validate(const std::vector<Server>& servers) {
     std::set<int> usedPorts;
     for (size_t i = 0; i < servers.size(); ++i) {
         const Server& server = servers[i];
-        if (server.port < 1 || server.port > 65535)
-            throw ValidationException("Invalid port: " + std::to_string(server.port));
-        if (!usedPorts.insert(server.port).second)
-            throw ValidationException("Duplicate port: " + std::to_string(server.port));
+        if (server.port < 1 || server.port > 65535) {
+            std::ostringstream oss; oss << server.port;
+            throw ValidationException("Invalid port: " + oss.str());
+        }
+        if (!usedPorts.insert(server.port).second) {
+            std::ostringstream oss; oss << server.port;
+            throw ValidationException("Duplicate port: " + oss.str());
+        }
         if (server.root.empty())
             throw ValidationException("Server root cannot be empty");
 
@@ -18,10 +23,10 @@ void Validator::validate(const std::vector<Server>& servers) {
                 throw ValidationException("Location path must start with '/'");
             if (!locationPaths.insert(loc.path).second)
                 throw ValidationException("Duplicate location path: " + loc.path);
-            if (loc.root.empty())
-                throw ValidationException("Location root cannot be empty");
-            if (loc.index.empty())
-                throw ValidationException("Location index cannot be empty");
+            if (loc.root.empty() && server.root.empty())
+                throw ValidationException("Location root cannot be empty when server root is not set");
+            if (loc.returnCode != 0 && (loc.returnCode < 300 || loc.returnCode > 399))
+                throw ValidationException("Return code must be in range 300-399");
         }
     }
 }
