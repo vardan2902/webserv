@@ -4,13 +4,7 @@
 
 ServerManager* ServerManager::_instance = NULL;
 
-ServerManager::ServerManager(
-	IListenerFactory& listenerFactory,
-	std::vector<Server>& servers,
-	ILogger& logger
-):
-	_logger(logger),
-	_listenerFactory(listenerFactory),
+ServerManager::ServerManager(std::vector<Server>& servers):
 	_servers(servers)
 {}
 
@@ -21,13 +15,9 @@ ServerManager::~ServerManager() {
 	_instance = NULL;
 }
 
-ServerManager& ServerManager::getInstance(
-	IListenerFactory& listenerFactory,
-	std::vector<Server>& servers,
-	ILogger& logger
-) {
+ServerManager& ServerManager::getInstance(std::vector<Server>& servers) {
 	if (_instance == NULL)
-		_instance = new ServerManager(listenerFactory, servers, logger);
+		_instance = new ServerManager(servers);
 	return *_instance;
 }
 
@@ -44,24 +34,29 @@ ServerManager& ServerManager::getInstance() {
 
 void ServerManager::initializeListeningSockets() {
 	for (size_t i = 0; i < _servers.size(); ++i) {
-		IListener* listener = _listenerFactory.create(_servers[i].port);
+		IListener* listener = DIContainer::getInstance().resolve<IListenerFactory>(DI_LISTENER_FACTORY).create(_servers[i].host, _servers[i].port);
 		_fdToListener.insert(std::pair<int, IListener*>(listener->fd(), listener));
 		_fdToServer.insert(std::pair<int, Server*>(listener->fd(), &_servers[i]));
+
+		std::ostringstream msg;
+		msg << "server listening on " << _servers[i].host << ":" << _servers[i].port;
+		DIContainer::getInstance().resolve<ILogger>(DI_LOGGER).info(msg.str());
 	}
 }
 
 void ServerManager::registerWithEventLoop() {
+	ILogger& logger = DIContainer::getInstance().resolve<ILogger>(DI_LOGGER);
 	try {
 		EventLoop::initPoll();
 		EventLoop::registerListeners(_fdToListener);
 		EventLoop::run(_fdToServer);
 	} catch (EventLoopException& e) {
-		_logger.error(std::string("EventLoop error: ") + e.what());
+		logger.error(std::string("EventLoop error: ") + e.what());
 	} catch (ServerException& e) {
-		_logger.error(std::string("Server error: ") + e.what());
+		logger.error(std::string("Server error: ") + e.what());
 	} catch (RequestParserException& e) {
-		_logger.error(std::string("Request parser error: ") + e.what());
+		logger.error(std::string("Request parser error: ") + e.what());
 	} catch (std::exception& e) {
-		_logger.error(std::string("Unexpected error: ") + e.what());
+		logger.error(std::string("Unexpected error: ") + e.what());
 	}
 }

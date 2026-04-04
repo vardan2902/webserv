@@ -1,4 +1,23 @@
 #include "ResponseManager.hpp"
+#include <sstream>
+
+static std::string _percentDecode(const std::string& s) {
+	std::string out;
+	for (size_t i = 0; i < s.size(); ++i) {
+		if (s[i] == '%' && i + 2 < s.size()) {
+			std::istringstream iss(s.substr(i + 1, 2));
+			int val = 0;
+			iss >> std::hex >> val;
+			if (!iss.fail()) {
+				out += static_cast<char>(val);
+				i += 2;
+				continue;
+			}
+		}
+		out += s[i];
+	}
+	return out;
+}
 
 ResponseManager::ResponseManager() {}
 ResponseManager::ResponseManager(const ResponseManager&) {}
@@ -278,7 +297,7 @@ HttpResponse ResponseManager::_collect(const HttpRequest& req, const Server& ser
 
 	std::string root     = location && !location->root.empty()  ? location->root  : server.root;
 	std::string index    = location && !location->index.empty() ? location->index : "index.html";
-	std::string filePath = root + req.path;
+	std::string filePath = root + _percentDecode(req.path);
 
 	typedef HttpResponse (ResponseManager::*MethodHandler)(
 		const HttpRequest&, const Location*, const std::string&, const std::string&

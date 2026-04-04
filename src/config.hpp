@@ -21,8 +21,9 @@ struct Location {
 struct Server {
     int                         port;
     size_t                      clientMaxBodySize;
+    std::string                 host;
     std::string                 root;
     std::vector<Location>       locations;
     std::map<int, std::string>  errorPages;
-    Server() : port(DEFAULT_PORT), clientMaxBodySize(0) {}
+    Server() : port(DEFAULT_PORT), clientMaxBodySize(0), host("0.0.0.0") {}
 };

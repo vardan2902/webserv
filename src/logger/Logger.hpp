@@ -1,3 +1,8 @@
+#include <iostream>
+#include <ostream>
+#include <ctime>
+#include <string>
+
 #include "ILogger.hpp"
 #include "../webserv.hpp"
 
