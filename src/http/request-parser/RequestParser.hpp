@@ -11,6 +11,7 @@ private:
 	void _parseHeaders(HttpRequest& req, size_t& pos) const;
 	void _parseBody(HttpRequest& req, size_t pos) const;
 	std::string _readLine(size_t& pos) const;
+	std::string _decodeChunked(size_t pos) const;
 public:
 	RequestParser();
 	RequestParser(const RequestParser&);

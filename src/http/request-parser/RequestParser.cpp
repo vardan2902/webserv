@@ -54,7 +54,33 @@ void RequestParser::_parseHeaders(HttpRequest& req, size_t& pos) const {
 	}
 }
 
+std::string RequestParser::_decodeChunked(size_t pos) const {
+	std::string result;
+	while (true) {
+		std::string sizeLine = _readLine(pos);
+		size_t chunkSize = 0;
+		std::istringstream iss(sizeLine);
+		iss >> std::hex >> chunkSize;
+		if (chunkSize == 0)
+			break;
+		if (pos + chunkSize > _raw.size())
+			throw RequestParserException("chunked body: chunk data truncated");
+		result.append(_raw, pos, chunkSize);
+		pos += chunkSize;
+		if (pos + 2 > _raw.size() || _raw[pos] != '\r' || _raw[pos + 1] != '\n')
+			throw RequestParserException("chunked body: missing CRLF after chunk data");
+		pos += 2;
+	}
+	return result;
+}
+
 void RequestParser::_parseBody(HttpRequest& req, size_t pos) const {
+	std::map<std::string, std::string>::const_iterator te = req.headers.find("Transfer-Encoding");
+	if (te != req.headers.end() && te->second == "chunked") {
+		req.body = _decodeChunked(pos);
+		return;
+	}
+
 	std::map<std::string, std::string>::const_iterator it = req.headers.find("Content-Length");
 	if (it == req.headers.end())
 		return;

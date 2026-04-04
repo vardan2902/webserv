@@ -87,6 +87,10 @@ static bool _headersComplete(const std::string& buf, size_t& headerEnd) {
 
 static bool _bodyComplete(const std::string& buf, size_t headerEnd) {
 	std::string headers = buf.substr(0, headerEnd);
+
+	if (headers.find("Transfer-Encoding: chunked") != std::string::npos)
+		return buf.find("0\r\n\r\n", headerEnd) != std::string::npos;
+
 	std::string clKey = "Content-Length: ";
 	size_t clPos = headers.find(clKey);
 	if (clPos == std::string::npos)
