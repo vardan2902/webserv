@@ -29,6 +29,28 @@ static HttpResponse _makeResponse(int code, const std::string& body = "") {
 	return r;
 }
 
+static std::string _mimeType(const std::string& path) {
+	size_t dot = path.rfind('.');
+	if (dot == std::string::npos) return "application/octet-stream";
+	std::string ext = path.substr(dot);
+
+	if (ext == ".html" || ext == ".htm") return "text/html";
+	if (ext == ".css")                   return "text/css";
+	if (ext == ".js")                    return "application/javascript";
+	if (ext == ".json")                  return "application/json";
+	if (ext == ".txt")                   return "text/plain";
+	if (ext == ".xml")                   return "application/xml";
+	if (ext == ".png")                   return "image/png";
+	if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+	if (ext == ".gif")                   return "image/gif";
+	if (ext == ".svg")                   return "image/svg+xml";
+	if (ext == ".ico")                   return "image/x-icon";
+	if (ext == ".pdf")                   return "application/pdf";
+	if (ext == ".mp4")                   return "video/mp4";
+	if (ext == ".webm")                  return "video/webm";
+	return "application/octet-stream";
+}
+
 static bool _isMethodAllowed(const std::string& method, const std::vector<std::string>& allowed) {
 	for (size_t i = 0; i < allowed.size(); ++i)
 		if (allowed[i] == method) return true;
@@ -235,12 +257,14 @@ HttpResponse ResponseManager::_serveDirectory(
 }
 
 HttpResponse ResponseManager::_serveFile(const std::string& filePath) const {
-	std::ifstream file(filePath.c_str());
+	std::ifstream file(filePath.c_str(), std::ios::binary);
 	if (!file.is_open())
 		return _makeResponse(404, "404 Not Found");
 	std::ostringstream ss;
 	ss << file.rdbuf();
-	return _makeResponse(200, ss.str());
+	HttpResponse resp = _makeResponse(200, ss.str());
+	resp.headers["Content-Type"] = _mimeType(filePath);
+	return resp;
 }
 
 // ─── collect ─────────────────────────────────────────────────────────────────
@@ -278,29 +302,74 @@ HttpResponse ResponseManager::_collect(const HttpRequest& req, const Server& ser
 
 std::string ResponseManager::build_raw(const HttpResponse& response) const {
 	std::ostringstream oss;
+	std::map<std::string, std::string>::const_iterator ctIt = response.headers.find("Content-Type");
+	std::string contentType = (ctIt != response.headers.end()) ? ctIt->second : "text/html";
+
 	oss << "HTTP/1.1 " << response.statusCode << " " << _statusMessage(response.statusCode) << "\r\n"
 	    << "Content-Length: " << response.body.size() << "\r\n"
-	    << "Content-Type: text/html\r\n";
-	for (std::map<std::string, std::string>::const_iterator it = response.headers.begin(); it != response.headers.end(); ++it)
+	    << "Content-Type: " << contentType << "\r\n";
+	for (std::map<std::string, std::string>::const_iterator it = response.headers.begin(); it != response.headers.end(); ++it) {
+		if (it->first == "Content-Type") continue;
 		oss << it->first << ": " << it->second << "\r\n";
+	}
 	oss << "\r\n" << response.body;
 	return oss.str();
+}
+
+static std::string _errorStatusText(int code) {
+	switch (code) {
+		case 400: return "Bad Request";
+		case 403: return "Forbidden";
+		case 404: return "Not Found";
+		case 405: return "Method Not Allowed";
+		case 413: return "Content Too Large";
+		case 500: return "Internal Server Error";
+		case 501: return "Not Implemented";
+		default:  return "Error";
+	}
+}
+
+static void _loadErrorPage(HttpResponse& response, const Server& server) {
+	std::string errorFilePath;
+
+	std::map<int, std::string>::const_iterator it = server.errorPages.find(response.statusCode);
+	if (it != server.errorPages.end()) {
+		errorFilePath = server.root + it->second;
+	} else {
+		std::ostringstream oss;
+		oss << server.root << "/errors/" << response.statusCode << ".html";
+		errorFilePath = oss.str();
+	}
+
+	std::ifstream errFile(errorFilePath.c_str());
+	if (errFile.is_open()) {
+		std::ostringstream ss;
+		ss << errFile.rdbuf();
+		response.body = ss.str();
+		return;
+	}
+
+	// Built-in fallback: inline HTML when no file is available
+	std::string msg = _errorStatusText(response.statusCode);
+	std::ostringstream html;
+	html << "<!DOCTYPE html><html>"
+	     << "<head><meta charset=\"utf-8\"/><title>" << response.statusCode << " \xe2\x80\x94 " << msg << "</title></head>"
+	     << "<body><h1>" << response.statusCode << "</h1><p>" << msg << "</p>"
+	     << "<p><a href=\"/\">Home</a></p></body></html>";
+	response.body = html.str();
+}
+
+std::string ResponseManager::buildError(int code, const Server& server) const {
+	HttpResponse response = _makeResponse(code);
+	_loadErrorPage(response, server);
+	return build_raw(response);
 }
 
 std::string ResponseManager::build(const HttpRequest& req, const Server& server, const Location* location) const {
 	HttpResponse response = _collect(req, server, location);
 
-	if (response.statusCode >= 400 && response.statusCode <= 599) {
-		std::map<int, std::string>::const_iterator it = server.errorPages.find(response.statusCode);
-		if (it != server.errorPages.end()) {
-			std::ifstream errFile((server.root + it->second).c_str());
-			if (errFile.is_open()) {
-				std::ostringstream ss;
-				ss << errFile.rdbuf();
-				response.body = ss.str();
-			}
-		}
-	}
+	if (response.statusCode >= 400 && response.statusCode <= 599)
+		_loadErrorPage(response, server);
 
 	return build_raw(response);
 }

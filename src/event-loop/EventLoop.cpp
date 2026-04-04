@@ -106,18 +106,7 @@ void EventLoop::_handleRead(Connection& conn) {
 	_processRequest(conn);
 }
 
-static std::string _buildResponse(int code, const std::string& msg, const std::string& body) {
-	std::ostringstream oss;
-	oss << "HTTP/1.1 " << code << " " << msg << "\r\n"
-	    << "Content-Length: " << body.size() << "\r\n"
-	    << "Content-Type: text/html\r\n"
-	    << "\r\n"
-	    << body;
-	return oss.str();
-}
-
-void EventLoop::_rejectOversizedBody(Connection& conn) {
-	conn.out_buffer = _buildResponse(413, "Content Too Large", "413 Content Too Large");
+void EventLoop::_prepareWrite(Connection& conn) {
 	conn.in_buffer.clear();
 	conn.bytes_sent = 0;
 	conn.state = WRITING;
@@ -127,10 +116,26 @@ void EventLoop::_rejectOversizedBody(Connection& conn) {
 	epoll_ctl(_epollFd, EPOLL_CTL_MOD, conn.fd, &ev);
 }
 
+void EventLoop::_rejectOversizedBody(Connection& conn) {
+	ResponseManager rm;
+	conn.out_buffer = rm.buildError(413, *conn.server);
+	_prepareWrite(conn);
+}
+
 void EventLoop::_processRequest(Connection& conn) {
+	ResponseManager rm;
+
 	RequestParser parser;
 	parser.feed(conn.in_buffer);
-	HttpRequest req = parser.parse();
+
+	HttpRequest req;
+	try {
+		req = parser.parse();
+	} catch (const RequestParserException&) {
+		conn.out_buffer = rm.buildError(400, *conn.server);
+		_prepareWrite(conn);
+		return;
+	}
 
 	if (conn.server->clientMaxBodySize > 0 && req.body.size() > conn.server->clientMaxBodySize) {
 		_rejectOversizedBody(conn);
@@ -140,16 +145,8 @@ void EventLoop::_processRequest(Connection& conn) {
 	Router router;
 	const Location* location = router.route(*conn.server, req.path);
 
-	ResponseManager rm;
 	conn.out_buffer = rm.build(req, *conn.server, location);
-	conn.in_buffer.clear();
-	conn.bytes_sent = 0;
-	conn.state = WRITING;
-
-	epoll_event ev;
-	ev.events = EPOLLOUT;
-	ev.data.fd = conn.fd;
-	epoll_ctl(_epollFd, EPOLL_CTL_MOD, conn.fd, &ev);
+	_prepareWrite(conn);
 }
 
 void EventLoop::_handleWrite(Connection& conn) {

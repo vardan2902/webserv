@@ -42,6 +42,7 @@ private:
 	static void _handleAcceptConnection(int);
 	static void _closeConnection(int);
 	static void _processRequest(Connection&);
+	static void _prepareWrite(Connection&);
 	static void _rejectOversizedBody(Connection&);
 	static void _resetToReading(Connection&);
 	static void _handleRead(Connection&);
