@@ -21,6 +21,7 @@
 #define RETURN_DIRECTIVE                "return"
 #define AUTOINDEX_DIRECTIVE             "autoindex"
 #define UPLOAD_STORE_DIRECTIVE          "upload_store"
+#define CGI_EXT_DIRECTIVE               "cgi_ext"
 
 class Parser {
 private:
@@ -45,6 +46,7 @@ private:
     void _parseAllowMethods(Location&);
     void _parseReturn(Location&);
     void _parseUploadStore(Location&);
+    void _parseCgiExt(Location&);
 
     Token expect(
         Type type,

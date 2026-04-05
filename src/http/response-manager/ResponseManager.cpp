@@ -1,4 +1,5 @@
 #include "ResponseManager.hpp"
+#include "../cgi/CgiHandler.hpp"
 #include <sstream>
 
 static std::string _percentDecode(const std::string& s) {
@@ -295,9 +296,13 @@ HttpResponse ResponseManager::_collect(const HttpRequest& req, const Server& ser
 	if (location && !location->allowMethods.empty() && !_isMethodAllowed(req.method, location->allowMethods))
 		return _makeResponse(405, "405 Method Not Allowed");
 
-	std::string root     = location && !location->root.empty()  ? location->root  : server.root;
-	std::string index    = location && !location->index.empty() ? location->index : "index.html";
-	std::string filePath = root + _percentDecode(req.path);
+	std::string root  = location && !location->root.empty()  ? location->root  : server.root;
+	std::string index = location && !location->index.empty() ? location->index : "index.html";
+
+	// Strip query string before computing filesystem path
+	std::string pathOnly, dummy;
+	splitPathAndQuery(req.path, pathOnly, dummy);
+	std::string filePath = root + _percentDecode(pathOnly);
 
 	typedef HttpResponse (ResponseManager::*MethodHandler)(
 		const HttpRequest&, const Location*, const std::string&, const std::string&
@@ -381,6 +386,15 @@ static void _loadErrorPage(HttpResponse& response, const Server& server) {
 std::string ResponseManager::buildError(int code, const Server& server) const {
 	HttpResponse response = _makeResponse(code);
 	_loadErrorPage(response, server);
+	return build_raw(response);
+}
+
+std::string ResponseManager::buildFromCgiOutput(
+	const std::string& cgiOutput, const Server& server
+) const {
+	HttpResponse response = CgiHandler::parseResponse(cgiOutput);
+	if (response.statusCode >= 400 && response.statusCode <= 599)
+		_loadErrorPage(response, server);
 	return build_raw(response);
 }
 

@@ -207,6 +207,13 @@ void Parser::_parseUploadStore(Location& loc) {
     loc.uploadStore = valueTok.value;
 }
 
+void Parser::_parseCgiExt(Location& loc) {
+    Token extTok  = expect(Word, EMPTY_STRING, "Expected extension for 'cgi_ext'");
+    Token pathTok = expect(Word, EMPTY_STRING, "Expected interpreter path for 'cgi_ext'");
+    expect(Semicolon, EMPTY_STRING, "Missing semicolon for 'cgi_ext'");
+    loc.cgiExtensions[extTok.value] = pathTok.value;
+}
+
 void Parser::parseLocationDirective(Location& loc) {
     Token keyTok = expect(Word, EMPTY_STRING, "Expected location directive");
     const std::string& key = keyTok.value;
@@ -222,6 +229,7 @@ void Parser::parseLocationDirective(Location& loc) {
         handlers[ALLOW_METHODS_DIRECTIVE] = &Parser::_parseAllowMethods;
         handlers[RETURN_DIRECTIVE]        = &Parser::_parseReturn;
         handlers[UPLOAD_STORE_DIRECTIVE]  = &Parser::_parseUploadStore;
+        handlers[CGI_EXT_DIRECTIVE]       = &Parser::_parseCgiExt;
     }
 
     LocationHandlerMap::iterator it = handlers.find(key);

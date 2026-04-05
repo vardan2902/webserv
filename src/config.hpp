@@ -15,6 +15,7 @@ struct Location {
     std::string                 index;
     std::vector<std::string>    allowMethods;
     std::string                 uploadStore;
+    std::map<std::string, std::string> cgiExtensions; // ".py" → "/usr/bin/python3"
     Location() : autoindex(false), returnCode(0) {}
 };
 

@@ -23,6 +23,7 @@ public:
 
 	std::string build(const HttpRequest& req, const Server& server, const Location* location) const;
 	std::string buildError(int code, const Server& server) const;
+	std::string buildFromCgiOutput(const std::string& cgiOutput, const Server& server) const;
 
 private:
 	HttpResponse  _collect(const HttpRequest& req, const Server& server, const Location* location) const;

@@ -11,12 +11,16 @@ std::string EventLoop::_itoa(int n) {
 int                       EventLoop::_epollFd    = -1;
 std::map<int, Server*>*   EventLoop::_fdToServer = NULL;
 std::map<int, Connection> EventLoop::_connections;
+std::map<int, int>        EventLoop::_cgiToConn;
 ILogger*                  EventLoop::_logger     = NULL;
 
 void EventLoop::initPoll() {
 	_epollFd = epoll_create(1);
 	if (_epollFd == -1)
 		throw EventLoopException("epoll_create() failed");
+
+	signal(SIGCHLD, SIG_IGN);  // auto-reap CGI child processes
+	signal(SIGPIPE, SIG_IGN);  // ignore broken pipe on CGI stdin write
 }
 
 void EventLoop::registerListener(const std::pair<const int, IListener *>& socket) {
@@ -112,6 +116,16 @@ void EventLoop::_closeConnection(int fd) {
 	msg << "connection closed fd=" << fd;
 	_logger->debug(msg.str());
 
+	std::map<int, Connection>::iterator it = _connections.find(fd);
+	if (it != _connections.end()) {
+		Connection& conn = it->second;
+		if (conn.cgi.pid > 0 || conn.cgi.stdinFd >= 0 || conn.cgi.stdoutFd >= 0) {
+			if (conn.cgi.pid > 0)
+				kill(conn.cgi.pid, SIGKILL);
+			_cleanupCgi(conn);
+		}
+	}
+
 	epoll_ctl(_epollFd, EPOLL_CTL_DEL, fd, NULL);
 	close(fd);
 	_connections.erase(fd);
@@ -197,8 +211,14 @@ void EventLoop::_processRequest(Connection& conn) {
 		return;
 	}
 
+	std::string pathOnly, queryString;
+	splitPathAndQuery(req.path, pathOnly, queryString);
+
 	IRouter& router = di.resolve<IRouter>(DI_ROUTER);
-	const Location* location = router.route(*conn.server, req.path);
+	const Location* location = router.route(*conn.server, pathOnly);
+
+	if (_tryDispatchCgi(conn, req, pathOnly, queryString, location))
+		return;
 
 	IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
 	conn.out_buffer = rm.build(req, *conn.server, location);
@@ -236,6 +256,172 @@ void EventLoop::_resetToReading(Connection& conn) {
 	epoll_ctl(_epollFd, EPOLL_CTL_MOD, conn.fd, &ev);
 }
 
+bool EventLoop::_tryDispatchCgi(
+	Connection& conn, const HttpRequest& req,
+	const std::string& pathOnly, const std::string& queryString,
+	const Location* location
+) {
+	std::string ext = getFileExtension(pathOnly);
+	if (ext.empty() || !isCgiExtension(ext, location))
+		return false;
+
+	std::string root     = (location && !location->root.empty())
+	                       ? location->root : conn.server->root;
+	std::string filePath = root + pathOnly;
+	_startCgi(conn, req, location, filePath, queryString);
+	return true;
+}
+
+void EventLoop::_initCgiContext(
+	Connection& conn, const HttpRequest& req,
+	const CgiHandler::CgiProcess& process
+) {
+	conn.cgi.pid         = process.pid;
+	conn.cgi.stdinFd     = process.stdinFd;
+	conn.cgi.stdoutFd    = process.stdoutFd;
+	conn.cgi.inputBuf    = req.body;
+	conn.cgi.inputOffset = 0;
+	conn.cgi.outputBuf.clear();
+	conn.cgi.startTime   = time(NULL);
+	conn.cgi.req         = req;
+}
+
+void EventLoop::_registerCgiPipes(
+	Connection& conn, const CgiHandler::CgiProcess& process
+) {
+	epoll_event ev;
+	ev.events  = EPOLLIN;
+	ev.data.fd = process.stdoutFd;
+	epoll_ctl(_epollFd, EPOLL_CTL_ADD, process.stdoutFd, &ev);
+	_cgiToConn[process.stdoutFd] = conn.fd;
+
+	if (!conn.cgi.inputBuf.empty()) {
+		ev.events  = EPOLLOUT;
+		ev.data.fd = process.stdinFd;
+		epoll_ctl(_epollFd, EPOLL_CTL_ADD, process.stdinFd, &ev);
+		_cgiToConn[process.stdinFd] = conn.fd;
+		conn.state = CGI_WRITING;
+	} else {
+		close(process.stdinFd);
+		conn.cgi.stdinFd = -1;
+		conn.state = CGI_READING;
+	}
+}
+
+void EventLoop::_startCgi(
+	Connection& conn, const HttpRequest& req,
+	const Location* loc, const std::string& filePath,
+	const std::string& queryString
+) {
+	CgiHandler::CgiProcess process;
+	try {
+		CgiHandler::spawn(req, *conn.server, loc, filePath, queryString, process);
+	} catch (const CgiException& e) {
+		_logger->error(std::string("CGI spawn failed: ") + e.what());
+		DIContainer& di = DIContainer::getInstance();
+		IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
+		conn.out_buffer = rm.buildError(500, *conn.server);
+		_prepareWrite(conn);
+		return;
+	}
+	_initCgiContext(conn, req, process);
+	_registerCgiPipes(conn, process);
+}
+
+void EventLoop::_handleCgi(int fd, uint32_t events) {
+	std::map<int, int>::iterator cgiIt = _cgiToConn.find(fd);
+	if (cgiIt == _cgiToConn.end())
+		return;
+	std::map<int, Connection>::iterator connIt = _connections.find(cgiIt->second);
+	if (connIt == _connections.end())
+		return;
+	if (events & EPOLLOUT)
+		_handleCgiWrite(connIt->second);
+	if (events & (EPOLLIN | EPOLLHUP))
+		_handleCgiRead(connIt->second);
+}
+
+void EventLoop::_handleCgiWrite(Connection& conn) {
+	conn.lastActivity = time(NULL);
+
+	const char* data      = conn.cgi.inputBuf.c_str() + conn.cgi.inputOffset;
+	size_t      remaining = conn.cgi.inputBuf.size() - conn.cgi.inputOffset;
+
+	if (remaining > 0) {
+		ssize_t written = write(conn.cgi.stdinFd, data, remaining);
+		if (written > 0)
+			conn.cgi.inputOffset += static_cast<size_t>(written);
+	}
+
+	if (conn.cgi.inputOffset >= conn.cgi.inputBuf.size()) {
+		epoll_ctl(_epollFd, EPOLL_CTL_DEL, conn.cgi.stdinFd, NULL);
+		_cgiToConn.erase(conn.cgi.stdinFd);
+		close(conn.cgi.stdinFd);
+		conn.cgi.stdinFd = -1;
+		conn.state = CGI_READING;
+	}
+}
+
+void EventLoop::_handleCgiRead(Connection& conn) {
+	conn.lastActivity = time(NULL);
+
+	char    buf[BUFFER_SIZE];
+	ssize_t bytes = read(conn.cgi.stdoutFd, buf, sizeof(buf));
+
+	if (bytes > 0) {
+		conn.cgi.outputBuf.append(buf, static_cast<size_t>(bytes));
+		return;
+	}
+
+	std::string cgiOutput = conn.cgi.outputBuf;
+	HttpRequest savedReq  = conn.cgi.req;
+	_cleanupCgi(conn);
+
+	DIContainer& di = DIContainer::getInstance();
+	IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
+	conn.out_buffer = rm.buildFromCgiOutput(cgiOutput, *conn.server);
+
+	_logResponse(conn, savedReq);
+	_prepareWrite(conn);
+}
+
+void EventLoop::_cleanupCgi(Connection& conn) {
+	if (conn.cgi.stdinFd >= 0) {
+		epoll_ctl(_epollFd, EPOLL_CTL_DEL, conn.cgi.stdinFd, NULL);
+		_cgiToConn.erase(conn.cgi.stdinFd);
+		close(conn.cgi.stdinFd);
+		conn.cgi.stdinFd = -1;
+	}
+	if (conn.cgi.stdoutFd >= 0) {
+		epoll_ctl(_epollFd, EPOLL_CTL_DEL, conn.cgi.stdoutFd, NULL);
+		_cgiToConn.erase(conn.cgi.stdoutFd);
+		close(conn.cgi.stdoutFd);
+		conn.cgi.stdoutFd = -1;
+	}
+	if (conn.cgi.pid > 0) {
+		int status;
+		waitpid(conn.cgi.pid, &status, WNOHANG);
+		conn.cgi.pid = -1;
+	}
+}
+
+void EventLoop::_abortCgi(Connection& conn, int statusCode) {
+	if (conn.cgi.pid > 0) {
+		kill(conn.cgi.pid, SIGKILL);
+		int status;
+		waitpid(conn.cgi.pid, &status, WNOHANG);
+		conn.cgi.pid = -1;
+	}
+	_cleanupCgi(conn);
+	conn.cgi.outputBuf.clear();
+	conn.cgi.inputBuf.clear();
+
+	DIContainer& di = DIContainer::getInstance();
+	IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
+	conn.out_buffer = rm.buildError(statusCode, *conn.server);
+	_prepareWrite(conn);
+}
+
 void EventLoop::run(std::map<int, Server*>& fdToServer) {
 	_fdToServer = &fdToServer;
 	_logger     = &DIContainer::getInstance().resolve<ILogger>(DI_LOGGER);
@@ -256,6 +442,12 @@ void EventLoop::run(std::map<int, Server*>& fdToServer) {
 
 				if (fdToServer.find(fd) != fdToServer.end()) {
 					_handleAcceptConnection(fd);
+					continue;
+				}
+
+				std::map<int, int>::iterator cgiIt = _cgiToConn.find(fd);
+				if (cgiIt != _cgiToConn.end()) {
+					_handleCgi(fd, events[i].events);
 					continue;
 				}
 
@@ -281,14 +473,32 @@ void EventLoop::run(std::map<int, Server*>& fdToServer) {
 }
 
 void EventLoop::_sweepIdleConnections() {
-	time_t now = time(NULL);
+	time_t           now     = time(NULL);
 	std::vector<int> toClose;
+	std::vector<int> toAbort;
 
 	for (std::map<int, Connection>::iterator it = _connections.begin();
 	     it != _connections.end(); ++it)
 	{
-		if (now - it->second.lastActivity > IDLE_TIMEOUT_SECS)
+		Connection& conn = it->second;
+
+		if ((conn.state == CGI_WRITING || conn.state == CGI_READING) &&
+		    now - conn.cgi.startTime > CGI_TIMEOUT_SECS)
+		{
+			toAbort.push_back(it->first);
+			continue;
+		}
+
+		if (now - conn.lastActivity > IDLE_TIMEOUT_SECS)
 			toClose.push_back(it->first);
+	}
+
+	for (size_t i = 0; i < toAbort.size(); ++i) {
+		std::map<int, Connection>::iterator it = _connections.find(toAbort[i]);
+		if (it != _connections.end()) {
+			_logger->debug("CGI timeout: aborting fd=" + _itoa(toAbort[i]));
+			_abortCgi(it->second, 504);
+		}
 	}
 
 	for (size_t i = 0; i < toClose.size(); ++i) {
