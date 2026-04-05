@@ -3,12 +3,16 @@
 #include <string>
 #include <vector>
 #include <fstream>
-#include <sstream>
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sstream>
+#include <sys/stat.h>
+#include <errno.h>
 
 #include "IResponseManager.hpp"
+#include "../cgi/CgiHandler.hpp"
+#include "../../di/DIContainer.hpp"
 #include "../../session/ISessionManager.hpp"
 
 class ResponseManager : public IResponseManager {

@@ -1,10 +1,4 @@
 #include "ResponseManager.hpp"
-#include "../cgi/CgiHandler.hpp"
-#include <sstream>
-#include <sys/stat.h>
-#include <errno.h>
-#include "../../di/DIContainer.hpp"
-#include "../../session/ISessionManager.hpp"
 
 static std::string _percentDecode(const std::string& s) {
 	std::string out;
