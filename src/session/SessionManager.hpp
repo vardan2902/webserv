@@ -1,6 +1,10 @@
 #pragma once
 
 #include <map>
+#include <sstream>
+#include <vector>
+#include <cstdlib>
+
 #include "ISessionManager.hpp"
 
 #define SESSION_TIMEOUT_SECS 1800
