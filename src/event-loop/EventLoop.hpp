@@ -6,7 +6,9 @@
 #include <cstdlib>
 #include <ctime>
 #include <cerrno>
+#include <csignal>
 #include <sys/epoll.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -17,6 +19,7 @@
 #include "../http/router/IRouter.hpp"
 #include "../http/response-manager/IResponseManager.hpp"
 #include "../http/request-parser/RequestParserException.hpp"
+#include "../http/cgi/CgiHandler.hpp"
 #include "../logger/ILogger.hpp"
 #include "../di/DIContainer.hpp"
 #include "EventLoopException.hpp"
@@ -25,11 +28,27 @@
 #define MAX_EVENTS        128
 #define IDLE_TIMEOUT_SECS 60
 #define EPOLL_TIMEOUT_MS  5000
+#define CGI_TIMEOUT_SECS  10
 
 typedef enum State {
 	READING,
-	WRITING
+	WRITING,
+	CGI_WRITING,
+	CGI_READING
 } EState;
+
+struct CgiContext {
+	pid_t       pid;
+	int         stdinFd;
+	int         stdoutFd;
+	std::string inputBuf;
+	size_t      inputOffset;
+	std::string outputBuf;
+	time_t      startTime;
+	HttpRequest req;
+
+	CgiContext() : pid(-1), stdinFd(-1), stdoutFd(-1), inputOffset(0), startTime(0) {}
+};
 
 struct Connection {
 	int         fd;
@@ -41,6 +60,7 @@ struct Connection {
 	std::string clientIp;
 	int         clientPort;
 	time_t      lastActivity;
+	CgiContext  cgi;
 };
 
 class EventLoop {
@@ -48,6 +68,7 @@ private:
 	static int                       _epollFd;
 	static std::map<int, Server*>*   _fdToServer;
 	static std::map<int, Connection> _connections;
+	static std::map<int, int>        _cgiToConn;  // cgi pipe fd → client fd
 	static ILogger*                  _logger;
 
 	static void        registerListener(const std::pair<const int, IListener*>&);
@@ -63,6 +84,15 @@ private:
 	static void        _logResponse(const Connection&, const HttpRequest&);
 	static void        _sweepIdleConnections();
 	static std::string _itoa(int);
+
+	static void        _startCgi(Connection&, const HttpRequest&,
+	                              const Location*, const std::string& filePath,
+	                              const std::string& queryString);
+	static void        _handleCgiWrite(Connection&);
+	static void        _handleCgiRead(Connection&);
+	static void        _cleanupCgi(Connection&);
+	static void        _abortCgi(Connection&, int statusCode);
+
 public:
 	static void initPoll();
 	static void run(std::map<int, Server*>&);
