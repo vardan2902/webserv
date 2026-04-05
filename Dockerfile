@@ -12,6 +12,10 @@ COPY . .
 
 RUN make
 
-RUN mkdir -p /webserv/uploads/files
+RUN mkdir -p \
+    /webserv/configs/allow_methods/uploads \
+    /webserv/configs/client_max_body_size/uploads \
+    /webserv/configs/upload/uploads/files \
+    /webserv/configs/errors/www/noindex
 
 CMD ["bash"]

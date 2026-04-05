@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>full — webserv</title>
+  <style>
+    body { font-family: sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+    pre { background: #f0f0f0; padding: 12px; border-radius: 4px; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    a.btn { display: inline-block; margin: 4px 4px 4px 0; padding: 8px 14px;
+            background: #1976d2; color: white; text-decoration: none; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>full</h1>
+  <p>All major features enabled: static files, autoindex, redirect, custom error page, body size limit.</p>
+
+  <h2>Config summary</h2>
+  <table>
+    <tr><th>Feature</th><th>Detail</th></tr>
+    <tr><td>client_max_body_size</td><td>10m</td></tr>
+    <tr><td>error_page 404</td><td>/404.html</td></tr>
+    <tr><td>GET /</td><td>static files, index.html</td></tr>
+    <tr><td>GET /files</td><td>autoindex on; DELETE allowed</td></tr>
+    <tr><td>GET /old</td><td>301 redirect → /</td></tr>
+  </table>
+
+  <h2>Try it</h2>
+  <a class="btn" href="/files/">Browse /files</a>
+  <a class="btn" href="/old">Test redirect /old</a>
+  <a class="btn" href="/missing">Trigger 404</a>
+
+  <h2>Terminal tests</h2>
+  <pre>curl -i http://localhost:8080/
+curl -iL http://localhost:8080/old        # follows redirect
+curl -i http://localhost:8080/files/      # directory listing
+curl -i http://localhost:8080/missing     # custom 404
+curl -i -X DELETE http://localhost:8080/files/sample.txt</pre>
+</body>
+</html>

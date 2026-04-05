@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>multi — Site 2</title>
+  <style>
+    body { font-family: sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; background: #e3f2fd; }
+    h1 { border-bottom: 2px solid #1565c0; padding-bottom: 8px; color: #1565c0; }
+    pre { background: #f0f0f0; padding: 12px; border-radius: 4px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Site 2 — port 8081</h1>
+  <p>This is <strong>Site 2</strong>, served on <code>:8081</code>.</p>
+  <p>A second independent server is running on <strong><a href="http://localhost:8080/">:8080</a></strong> with different content.</p>
+
+  <h2>Terminal tests</h2>
+  <pre>curl -i http://localhost:8081/    # this page
+curl -i http://localhost:8080/    # site 1</pre>
+</body>
+</html>

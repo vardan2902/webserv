@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>location — webserv</title>
+  <style>
+    body { font-family: sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+    pre { background: #f0f0f0; padding: 12px; border-radius: 4px; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+  </style>
+</head>
+<body>
+  <h1>location</h1>
+  <p>Basic server with a single explicit <code>location /</code> block that sets the root and index file.</p>
+
+  <h2>Config summary</h2>
+  <table>
+    <tr><th>Directive</th><th>Value</th></tr>
+    <tr><td>listen</td><td>8080</td></tr>
+    <tr><td>location /</td><td>root /webserv/configs/location/www; index index.html</td></tr>
+  </table>
+
+  <h2>Terminal tests</h2>
+  <pre>curl -i http://localhost:8080/
+curl -i http://localhost:8080/index.html</pre>
+
+  <p>If you can read this page, the <code>location</code> block is working correctly.</p>
+</body>
+</html>

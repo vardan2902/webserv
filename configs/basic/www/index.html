@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>basic — webserv</title>
+  <style>
+    body { font-family: sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+    pre { background: #f0f0f0; padding: 12px; border-radius: 4px; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+  </style>
+</head>
+<body>
+  <h1>basic</h1>
+  <p>Minimal single-server config — one port, one root, no location blocks.</p>
+
+  <h2>Config summary</h2>
+  <table>
+    <tr><th>Directive</th><th>Value</th></tr>
+    <tr><td>listen</td><td>8080</td></tr>
+    <tr><td>root</td><td>/webserv/configs/basic/www</td></tr>
+  </table>
+
+  <h2>Test</h2>
+  <pre>curl -i http://localhost:8080/
+curl -i http://localhost:8080/index.html
+curl -i http://localhost:8080/nonexistent   # 404</pre>
+
+  <p>If you can read this page, basic GET serving works.</p>
+</body>
+</html>

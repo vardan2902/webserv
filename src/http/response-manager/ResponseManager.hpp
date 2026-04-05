@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <fstream>
 #include <sstream>
 #include <dirent.h>
@@ -8,6 +9,7 @@
 #include <fcntl.h>
 
 #include "IResponseManager.hpp"
+#include "../../session/ISessionManager.hpp"
 
 class ResponseManager : public IResponseManager {
 	struct MultipartPart {
@@ -35,7 +37,7 @@ private:
 
 	// Method handlers (uniform signature for dispatch map)
 	HttpResponse  _handleDelete(const HttpRequest&, const Location*, const std::string& filePath, const std::string& index) const;
-	HttpResponse  _handlePost  (const HttpRequest&, const Location*, const std::string& filePath, const std::string& index) const;
+	HttpResponse  _handlePost  (const HttpRequest&, const Location*, const std::string& filePath, const std::string& index, const Server& server) const;
 	HttpResponse  _handleGet   (const HttpRequest&, const Location*, const std::string& filePath, const std::string& index) const;
 
 	// GET sub-handlers
@@ -43,7 +45,7 @@ private:
 	HttpResponse  _serveFile     (const std::string& filePath) const;
 
 	// POST sub-handlers
-	HttpResponse  _handleMultipart(const std::string& body, const std::string& boundary, const std::string& uploadStore) const;
+	HttpResponse  _handleMultipart(const std::string& body, const std::string& boundary, const std::string& uploadStore, const Server& server) const;
 	bool          _splitParts(const std::string& body, const std::string& boundary, std::vector<MultipartPart>& out) const;
 	bool          _parsePart(const std::string& raw, MultipartPart& out) const;
 	bool          _writeFile(const std::string& dest, const std::string& data) const;

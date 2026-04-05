@@ -5,6 +5,7 @@
 #include "http/request-parser/RequestParser.hpp"
 #include "http/router/Router.hpp"
 #include "http/response-manager/ResponseManager.hpp"
+#include "session/SessionManager.hpp"
 #include "di/DIContainer.hpp"
 
 std::string readConfigFile(const std::string& path) {
@@ -44,12 +45,14 @@ int main(int argc, char** argv) {
         RequestParser    requestParser;
         Router           router;
         ResponseManager  responseManager;
+        SessionManager   sessionManager;
 
         DIContainer& di = DIContainer::getInstance();
         di.bind<IListenerFactory>(DI_LISTENER_FACTORY, listenerFactory);
         di.bind<IRequestParser>(DI_REQUEST_PARSER, requestParser);
         di.bind<IRouter>(DI_ROUTER, router);
         di.bind<IResponseManager>(DI_RESPONSE_MANAGER, responseManager);
+        di.bind<ISessionManager>(DI_SESSION_MANAGER, sessionManager);
 
         ServerManager& sm = ServerManager::getInstance(servers);
         sm.initializeListeningSockets();
