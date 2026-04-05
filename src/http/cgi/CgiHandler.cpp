@@ -7,8 +7,8 @@
 #include <cctype>
 #include <sys/wait.h>
 
-void CgiHandler::splitPath(const std::string& reqPath,
-                            std::string& pathOnly, std::string& query) {
+void splitPathAndQuery(const std::string& reqPath,
+                        std::string& pathOnly, std::string& query) {
 	size_t q = reqPath.find('?');
 	if (q == std::string::npos) {
 		pathOnly = reqPath;
@@ -19,7 +19,7 @@ void CgiHandler::splitPath(const std::string& reqPath,
 	}
 }
 
-std::string CgiHandler::getExtension(const std::string& filePath) {
+std::string getFileExtension(const std::string& filePath) {
 	size_t slash = filePath.rfind('/');
 	size_t dot   = filePath.rfind('.');
 	if (dot == std::string::npos)
@@ -29,20 +29,20 @@ std::string CgiHandler::getExtension(const std::string& filePath) {
 	return filePath.substr(dot);
 }
 
-bool CgiHandler::isCgi(const std::string& ext, const Location* loc) {
+bool isCgiExtension(const std::string& ext, const Location* loc) {
 	if (!loc || ext.empty())
 		return false;
 	return loc->cgiExtensions.count(ext) > 0;
 }
 
-std::string CgiHandler::_getInterpreter(const std::string& ext, const Location* loc) {
+std::string CgiHandler::_findInterpreter(const std::string& ext, const Location* loc) {
 	if (!loc) return "";
 	std::map<std::string, std::string>::const_iterator it = loc->cgiExtensions.find(ext);
 	if (it == loc->cgiExtensions.end()) return "";
 	return it->second;
 }
 
-static std::string _itosCgi(int n) {
+static std::string _intToStr(int n) {
 	std::ostringstream oss;
 	oss << n;
 	return oss.str();
@@ -59,7 +59,7 @@ static std::string _headerToEnvKey(const std::string& header) {
 	return key;
 }
 
-std::vector<std::string> CgiHandler::_buildEnv(
+std::vector<std::string> CgiHandler::_buildCgiEnv(
 	const HttpRequest& req,
 	const Server& server,
 	const std::string& filePath,
@@ -72,13 +72,13 @@ std::vector<std::string> CgiHandler::_buildEnv(
 	env.push_back("SERVER_SOFTWARE=webserv/1.0");
 	env.push_back("REDIRECT_STATUS=200");
 
-	env.push_back("SERVER_PORT=" + _itosCgi(server.port));
+	env.push_back("SERVER_PORT=" + _intToStr(server.port));
 	env.push_back("SERVER_NAME=" + server.host);
 
 	env.push_back("REQUEST_METHOD=" + req.method);
 
 	std::string pathOnly, dummy;
-	splitPath(req.path, pathOnly, dummy);
+	splitPathAndQuery(req.path, pathOnly, dummy);
 	env.push_back("SCRIPT_NAME=" + pathOnly);
 	env.push_back("SCRIPT_FILENAME=" + filePath);
 	env.push_back("PATH_INFO=");
@@ -104,23 +104,7 @@ std::vector<std::string> CgiHandler::_buildEnv(
 	return env;
 }
 
-bool CgiHandler::start(
-	const HttpRequest& req,
-	const Server& server,
-	const Location* loc,
-	const std::string& filePath,
-	const std::string& queryString,
-	CgiProcess& out
-) {
-	std::string ext        = getExtension(filePath);
-	std::string interpreter = _getInterpreter(ext, loc);
-	if (interpreter.empty())
-		return false;
-
-	std::vector<std::string> envVec = _buildEnv(req, server, filePath, queryString);
-
-	int stdinPipe[2];
-	int stdoutPipe[2];
+bool CgiHandler::_openPipes(int stdinPipe[2], int stdoutPipe[2]) {
 	if (pipe(stdinPipe) < 0)
 		return false;
 	if (pipe(stdoutPipe) < 0) {
@@ -128,6 +112,59 @@ bool CgiHandler::start(
 		close(stdinPipe[1]);
 		return false;
 	}
+	return true;
+}
+
+void CgiHandler::_execCgiProcess(
+	int stdinRead, int stdoutWrite,
+	const std::string& interpreter,
+	const std::string& filePath,
+	const std::vector<std::string>& envVec
+) {
+	if (dup2(stdinRead, STDIN_FILENO) < 0)   _exit(1);
+	if (dup2(stdoutWrite, STDOUT_FILENO) < 0) _exit(1);
+	close(stdinRead);
+	close(stdoutWrite);
+
+	size_t slash = filePath.rfind('/');
+	if (slash != std::string::npos) {
+		std::string dir = filePath.substr(0, slash);
+		if (chdir(dir.c_str()) < 0) _exit(1);
+	}
+
+	std::vector<char*> argv;
+	argv.push_back(const_cast<char*>(interpreter.c_str()));
+	argv.push_back(const_cast<char*>(filePath.c_str()));
+	argv.push_back(NULL);
+
+	std::vector<char*> envp;
+	for (size_t i = 0; i < envVec.size(); ++i)
+		envp.push_back(const_cast<char*>(envVec[i].c_str()));
+	envp.push_back(NULL);
+
+	execve(interpreter.c_str(), &argv[0], &envp[0]);
+	_exit(1);
+}
+
+bool CgiHandler::spawn(
+	const HttpRequest& req,
+	const Server& server,
+	const Location* loc,
+	const std::string& filePath,
+	const std::string& queryString,
+	CgiProcess& out
+) {
+	std::string ext         = getFileExtension(filePath);
+	std::string interpreter = _findInterpreter(ext, loc);
+	if (interpreter.empty())
+		return false;
+
+	std::vector<std::string> envVec = _buildCgiEnv(req, server, filePath, queryString);
+
+	int stdinPipe[2];
+	int stdoutPipe[2];
+	if (!_openPipes(stdinPipe, stdoutPipe))
+		return false;
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -139,30 +176,7 @@ bool CgiHandler::start(
 	if (pid == 0) {
 		close(stdinPipe[1]);
 		close(stdoutPipe[0]);
-
-		if (dup2(stdinPipe[0], STDIN_FILENO) < 0)  _exit(1);
-		if (dup2(stdoutPipe[1], STDOUT_FILENO) < 0) _exit(1);
-		close(stdinPipe[0]);
-		close(stdoutPipe[1]);
-
-		size_t slash = filePath.rfind('/');
-		if (slash != std::string::npos) {
-			std::string dir = filePath.substr(0, slash);
-			if (chdir(dir.c_str()) < 0) _exit(1);
-		}
-
-		std::vector<char*> argv;
-		argv.push_back(const_cast<char*>(interpreter.c_str()));
-		argv.push_back(const_cast<char*>(filePath.c_str()));
-		argv.push_back(NULL);
-
-		std::vector<char*> envp;
-		for (size_t i = 0; i < envVec.size(); ++i)
-			envp.push_back(const_cast<char*>(envVec[i].c_str()));
-		envp.push_back(NULL);
-
-		execve(interpreter.c_str(), &argv[0], &envp[0]);
-		_exit(1);
+		_execCgiProcess(stdinPipe[0], stdoutPipe[1], interpreter, filePath, envVec);
 	}
 
 	close(stdinPipe[0]);
@@ -177,26 +191,22 @@ bool CgiHandler::start(
 	return true;
 }
 
-
-HttpResponse CgiHandler::parseOutput(const std::string& raw) {
-	HttpResponse resp;
-	resp.statusCode = 200;
-
-	size_t      sep    = raw.find("\r\n\r\n");
-	std::string delim  = "\r\n\r\n";
-	if (sep == std::string::npos) {
-		sep   = raw.find("\n\n");
+bool CgiHandler::_findHeaderBodyBoundary(const std::string& raw,
+                                          size_t& sep, std::string& delim) {
+	sep = raw.find("\r\n\r\n");
+	if (sep != std::string::npos) {
+		delim = "\r\n\r\n";
+		return true;
+	}
+	sep = raw.find("\n\n");
+	if (sep != std::string::npos) {
 		delim = "\n\n";
+		return true;
 	}
-	if (sep == std::string::npos) {
-		resp.body = raw;
-		resp.headers["Content-Type"] = "text/html";
-		return resp;
-	}
+	return false;
+}
 
-	std::string headerPart = raw.substr(0, sep);
-	resp.body              = raw.substr(sep + delim.size());
-
+void CgiHandler::_parseHeaderLines(const std::string& headerPart, HttpResponse& resp) {
 	std::istringstream ss(headerPart);
 	std::string line;
 	while (std::getline(ss, line)) {
@@ -219,6 +229,24 @@ HttpResponse CgiHandler::parseOutput(const std::string& raw) {
 			resp.headers[key] = val;
 		}
 	}
+}
+
+HttpResponse CgiHandler::parseResponse(const std::string& raw) {
+	HttpResponse resp;
+	resp.statusCode = 200;
+
+	size_t      sep;
+	std::string delim;
+	if (!_findHeaderBodyBoundary(raw, sep, delim)) {
+		resp.body = raw;
+		resp.headers["Content-Type"] = "text/html";
+		return resp;
+	}
+
+	std::string headerPart = raw.substr(0, sep);
+	resp.body              = raw.substr(sep + delim.size());
+
+	_parseHeaderLines(headerPart, resp);
 
 	if (resp.headers.find("Content-Type") == resp.headers.end())
 		resp.headers["Content-Type"] = "text/html";

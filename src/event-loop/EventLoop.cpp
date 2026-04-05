@@ -212,13 +212,13 @@ void EventLoop::_processRequest(Connection& conn) {
 	}
 
 	std::string pathOnly, queryString;
-	CgiHandler::splitPath(req.path, pathOnly, queryString);
+	splitPathAndQuery(req.path, pathOnly, queryString);
 
 	IRouter& router = di.resolve<IRouter>(DI_ROUTER);
 	const Location* location = router.route(*conn.server, pathOnly);
 
-	std::string ext = CgiHandler::getExtension(pathOnly);
-	if (!ext.empty() && CgiHandler::isCgi(ext, location)) {
+	std::string ext = getFileExtension(pathOnly);
+	if (!ext.empty() && isCgiExtension(ext, location)) {
 		std::string root     = (location && !location->root.empty())
 		                       ? location->root : conn.server->root;
 		std::string filePath = root + pathOnly;
@@ -268,7 +268,7 @@ void EventLoop::_startCgi(
 	const std::string& queryString
 ) {
 	CgiHandler::CgiProcess process;
-	if (!CgiHandler::start(req, *conn.server, loc, filePath, queryString, process)) {
+	if (!CgiHandler::spawn(req, *conn.server, loc, filePath, queryString, process)) {
 		DIContainer& di = DIContainer::getInstance();
 		IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
 		conn.out_buffer = rm.buildError(500, *conn.server);

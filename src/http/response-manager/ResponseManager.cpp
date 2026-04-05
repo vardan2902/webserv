@@ -301,7 +301,7 @@ HttpResponse ResponseManager::_collect(const HttpRequest& req, const Server& ser
 
 	// Strip query string before computing filesystem path
 	std::string pathOnly, dummy;
-	CgiHandler::splitPath(req.path, pathOnly, dummy);
+	splitPathAndQuery(req.path, pathOnly, dummy);
 	std::string filePath = root + _percentDecode(pathOnly);
 
 	typedef HttpResponse (ResponseManager::*MethodHandler)(
@@ -392,7 +392,7 @@ std::string ResponseManager::buildError(int code, const Server& server) const {
 std::string ResponseManager::buildFromCgiOutput(
 	const std::string& cgiOutput, const Server& server
 ) const {
-	HttpResponse response = CgiHandler::parseOutput(cgiOutput);
+	HttpResponse response = CgiHandler::parseResponse(cgiOutput);
 	if (response.statusCode >= 400 && response.statusCode <= 599)
 		_loadErrorPage(response, server);
 	return build_raw(response);
