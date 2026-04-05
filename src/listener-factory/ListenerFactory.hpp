@@ -12,5 +12,5 @@ public:
 	ListenerFactory& operator=(const ListenerFactory& other);
 	~ListenerFactory();
 
-	IListener* create(int port);
+	IListener* create(const std::string& host, int port);
 };

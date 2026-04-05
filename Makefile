@@ -56,5 +56,9 @@ docker-build:
 docker-run:
 	docker run --rm -it -p 8080:8080 webserv bash
 
+# Run automated test suite inside Docker (generates reports in tests/reports/)
+test:
+	@bash tests/run_tests.sh
+
 # Phony targets
-.PHONY: all clean fclean re docker-build docker-run
+.PHONY: all clean fclean re docker-build docker-run test

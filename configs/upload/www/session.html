@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Session Demo</title>
+  <style>
+    body { font-family: monospace; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+    .box { border: 1px solid #ccc; padding: 16px; margin: 16px 0; background: #f9f9f9; }
+    .label { color: #666; font-size: 0.85em; }
+    .value { font-size: 1.1em; word-break: break-all; }
+    button { padding: 8px 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Session Demo</h1>
+
+  <div class="box">
+    <p class="label">Cookie header sent by your browser:</p>
+    <p class="value" id="cookie-display">—</p>
+  </div>
+
+  <div class="box">
+    <p class="label">Session ID (parsed from cookie):</p>
+    <p class="value" id="session-id">—</p>
+    <p class="label" style="margin-top:12px">
+      The <code>Set-Cookie</code> header is set by the server on your first visit.<br>
+      Subsequent requests carry it back automatically.
+    </p>
+  </div>
+
+  <div class="box">
+    <p class="label">How to verify in terminal:</p>
+    <pre style="background:#eee;padding:8px;overflow:auto">
+# First request — server sets Set-Cookie
+curl -c cookies.txt -v http://localhost:8080/session.html 2>&1 | grep -i 'set-cookie\|cookie'
+
+# Second request — browser/curl sends Cookie header back
+curl -b cookies.txt -v http://localhost:8080/session.html 2>&1 | grep -i 'set-cookie\|cookie'
+    </pre>
+  </div>
+
+  <button onclick="location.reload()">Reload page</button>
+  &nbsp;
+  <a href="/">Home</a>
+
+  <script>
+    var raw = document.cookie || '(empty)';
+    document.getElementById('cookie-display').textContent = raw;
+
+    document.getElementById('session-id').textContent =
+      '(not readable — sessionId is HttpOnly; check Network tab \u2192 Response Headers)';
+  </script>
+</body>
+</html>

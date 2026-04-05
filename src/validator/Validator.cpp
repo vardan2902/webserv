@@ -2,17 +2,17 @@
 #include <sstream>
 
 void Validator::validate(const std::vector<Server>& servers) {
-    std::set<int> usedPorts;
+    std::set<std::string> usedBinds;
     for (size_t i = 0; i < servers.size(); ++i) {
         const Server& server = servers[i];
         if (server.port < 1 || server.port > 65535) {
             std::ostringstream oss; oss << server.port;
             throw ValidationException("Invalid port: " + oss.str());
         }
-        if (!usedPorts.insert(server.port).second) {
-            std::ostringstream oss; oss << server.port;
-            throw ValidationException("Duplicate port: " + oss.str());
-        }
+        std::ostringstream bindKey;
+        bindKey << server.host << ":" << server.port;
+        if (!usedBinds.insert(bindKey.str()).second)
+            throw ValidationException("Duplicate listen address: " + bindKey.str());
         if (server.root.empty())
             throw ValidationException("Server root cannot be empty");
 

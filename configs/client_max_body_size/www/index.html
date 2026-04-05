@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>client_max_body_size — webserv</title>
+  <style>
+    body { font-family: sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+    pre { background: #f0f0f0; padding: 12px; border-radius: 4px; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    .ok  { color: #2e7d32; font-weight: bold; }
+    .err { color: #c62828; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>client_max_body_size</h1>
+  <p>Upload body size is limited to <strong>100 KB</strong>. Requests exceeding this return <code>413 Content Too Large</code>.</p>
+
+  <h2>Config summary</h2>
+  <table>
+    <tr><th>Directive</th><th>Value</th></tr>
+    <tr><td>client_max_body_size</td><td>100k</td></tr>
+    <tr><td>upload_store</td><td>/webserv/configs/client_max_body_size/uploads</td></tr>
+  </table>
+
+  <h2>Upload a file</h2>
+  <p>Files under 100 KB will be accepted; files over 100 KB will be rejected.</p>
+  <form action="/upload" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" required />
+    <button type="submit">Upload</button>
+  </form>
+
+  <h2>Terminal tests</h2>
+  <pre># Small file — should succeed (201)
+dd if=/dev/urandom bs=1k count=50 | base64 > /tmp/small.txt
+curl -i -F "file=@/tmp/small.txt" http://localhost:8080/upload
+
+# Large file — should fail (413)
+dd if=/dev/urandom bs=1k count=200 | base64 > /tmp/large.txt
+curl -i -F "file=@/tmp/large.txt" http://localhost:8080/upload</pre>
+</body>
+</html>

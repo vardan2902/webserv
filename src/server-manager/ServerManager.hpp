@@ -15,23 +15,22 @@
 #include "IServerManager.hpp"
 #include "../logger/ILogger.hpp"
 #include "../config.hpp"
+#include "../di/DIContainer.hpp"
 
 class ServerManager : public IServerManager {
 private:
 	static ServerManager* _instance;
 
-	ILogger&              _logger;
-	IListenerFactory&     _listenerFactory;
 	std::vector<Server>&  _servers;
 	std::map<int, IListener*>  _fdToListener;
 	std::map<int, Server*>  _fdToServer;
 
-	ServerManager(IListenerFactory&, std::vector<Server>&, ILogger&);
+	ServerManager(std::vector<Server>&);
 	ServerManager(const ServerManager&);
 	ServerManager& operator=(const ServerManager&);
 
 public:
-	static ServerManager& getInstance(IListenerFactory&, std::vector<Server>&, ILogger&);
+	static ServerManager& getInstance(std::vector<Server>&);
 	static ServerManager& getInstance();
 	static void            destroyInstance();
 	virtual ~ServerManager();

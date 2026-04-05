@@ -94,12 +94,19 @@ static int _toInt(const std::string& s) {
 // ─── server directive handlers ───────────────────────────────────────────────
 
 void Parser::_parseListen(Server& server) {
-    Token valueTok = expect(Word, EMPTY_STRING, "Expected port for 'listen'");
+    Token valueTok = expect(Word, EMPTY_STRING, "Expected host:port or port for 'listen'");
     expect(Semicolon, EMPTY_STRING, "Missing semicolon for 'listen'");
+    const std::string& val = valueTok.value;
+    std::size_t colon = val.rfind(':');
     try {
-        server.port = _toInt(valueTok.value);
+        if (colon != std::string::npos) {
+            server.host = val.substr(0, colon);
+            server.port = _toInt(val.substr(colon + 1));
+        } else {
+            server.port = _toInt(val);
+        }
     } catch (...) {
-        throw ParserException("Invalid port value: " + valueTok.value);
+        throw ParserException("Invalid listen value: " + val);
     }
 }
 
@@ -200,6 +207,13 @@ void Parser::_parseUploadStore(Location& loc) {
     loc.uploadStore = valueTok.value;
 }
 
+void Parser::_parseCgiExt(Location& loc) {
+    Token extTok  = expect(Word, EMPTY_STRING, "Expected extension for 'cgi_ext'");
+    Token pathTok = expect(Word, EMPTY_STRING, "Expected interpreter path for 'cgi_ext'");
+    expect(Semicolon, EMPTY_STRING, "Missing semicolon for 'cgi_ext'");
+    loc.cgiExtensions[extTok.value] = pathTok.value;
+}
+
 void Parser::parseLocationDirective(Location& loc) {
     Token keyTok = expect(Word, EMPTY_STRING, "Expected location directive");
     const std::string& key = keyTok.value;
@@ -215,6 +229,7 @@ void Parser::parseLocationDirective(Location& loc) {
         handlers[ALLOW_METHODS_DIRECTIVE] = &Parser::_parseAllowMethods;
         handlers[RETURN_DIRECTIVE]        = &Parser::_parseReturn;
         handlers[UPLOAD_STORE_DIRECTIVE]  = &Parser::_parseUploadStore;
+        handlers[CGI_EXT_DIRECTIVE]       = &Parser::_parseCgiExt;
     }
 
     LocationHandlerMap::iterator it = handlers.find(key);

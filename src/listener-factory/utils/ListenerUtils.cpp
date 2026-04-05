@@ -16,14 +16,25 @@ namespace ListenerUtils {
 #endif
 	}
 
-	void bind(int fd, int port) {
-		struct sockaddr_in addr;
-		memset(&addr, 0, sizeof(addr));
-		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = INADDR_ANY;
-		addr.sin_port = htons(static_cast<uint16_t>(port));
-		if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == -1)
+	void bind(int fd, const std::string& host, int port) {
+		char portStr[16];
+		std::snprintf(portStr, sizeof(portStr), "%d", port);
+
+		struct addrinfo hints;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family   = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+
+		struct addrinfo* res;
+		int ret = getaddrinfo(host.c_str(), portStr, &hints, &res);
+		if (ret != 0)
+			throw ListenerException(std::string("getaddrinfo() failed: ") + gai_strerror(ret));
+
+		if (::bind(fd, res->ai_addr, res->ai_addrlen) == -1) {
+			freeaddrinfo(res);
 			throw ListenerException("bind() failed");
+		}
+		freeaddrinfo(res);
 	}
 
 	void listen(int fd) {
