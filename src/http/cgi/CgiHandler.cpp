@@ -1,4 +1,5 @@
 #include "CgiHandler.hpp"
+#include "CgiException.hpp"
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -59,22 +60,34 @@ static std::string _headerToEnvKey(const std::string& header) {
 	return key;
 }
 
-std::vector<std::string> CgiHandler::_buildCgiEnv(
-	const HttpRequest& req,
-	const Server& server,
-	const std::string& filePath,
-	const std::string& queryString
-) {
-	std::vector<std::string> env;
-
+void CgiHandler::_addGatewayVars(std::vector<std::string>& env) {
 	env.push_back("GATEWAY_INTERFACE=CGI/1.1");
 	env.push_back("SERVER_PROTOCOL=HTTP/1.1");
 	env.push_back("SERVER_SOFTWARE=webserv/1.0");
 	env.push_back("REDIRECT_STATUS=200");
+}
 
+void CgiHandler::_addServerVars(
+	std::vector<std::string>& env,
+	const Server& server, const HttpRequest& req
+) {
 	env.push_back("SERVER_PORT=" + _intToStr(server.port));
-	env.push_back("SERVER_NAME=" + server.host);
 
+	std::string serverName = server.host;
+	std::map<std::string, std::string>::const_iterator hostIt = req.headers.find("Host");
+	if (hostIt != req.headers.end() && !hostIt->second.empty()) {
+		serverName = hostIt->second;
+		size_t colon = serverName.find(':');
+		if (colon != std::string::npos)
+			serverName = serverName.substr(0, colon);
+	}
+	env.push_back("SERVER_NAME=" + serverName);
+}
+
+void CgiHandler::_addRequestVars(
+	std::vector<std::string>& env, const HttpRequest& req,
+	const std::string& filePath, const std::string& queryString
+) {
 	env.push_back("REQUEST_METHOD=" + req.method);
 
 	std::string pathOnly, dummy;
@@ -84,7 +97,11 @@ std::vector<std::string> CgiHandler::_buildCgiEnv(
 	env.push_back("PATH_INFO=");
 	env.push_back("PATH_TRANSLATED=");
 	env.push_back("QUERY_STRING=" + queryString);
+}
 
+void CgiHandler::_addContentVars(
+	std::vector<std::string>& env, const HttpRequest& req
+) {
 	std::map<std::string, std::string>::const_iterator ctIt =
 		req.headers.find("Content-Type");
 	env.push_back("CONTENT_TYPE=" +
@@ -93,14 +110,33 @@ std::vector<std::string> CgiHandler::_buildCgiEnv(
 	std::map<std::string, std::string>::const_iterator clIt =
 		req.headers.find("Content-Length");
 	env.push_back("CONTENT_LENGTH=" +
-		(clIt != req.headers.end() ? clIt->second : std::string("0")));
+		(clIt != req.headers.end() ? clIt->second : _intToStr(static_cast<int>(req.body.size()))));
+}
 
+void CgiHandler::_addHttpHeaderVars(
+	std::vector<std::string>& env, const HttpRequest& req
+) {
 	for (std::map<std::string, std::string>::const_iterator it = req.headers.begin();
 	     it != req.headers.end(); ++it)
 	{
+		if (it->first == "Content-Type" || it->first == "Content-Length")
+			continue;
 		env.push_back(_headerToEnvKey(it->first) + "=" + it->second);
 	}
+}
 
+std::vector<std::string> CgiHandler::_buildCgiEnv(
+	const HttpRequest& req,
+	const Server& server,
+	const std::string& filePath,
+	const std::string& queryString
+) {
+	std::vector<std::string> env;
+	_addGatewayVars(env);
+	_addServerVars(env, server, req);
+	_addRequestVars(env, req, filePath, queryString);
+	_addContentVars(env, req);
+	_addHttpHeaderVars(env, req);
 	return env;
 }
 
@@ -146,7 +182,7 @@ void CgiHandler::_execCgiProcess(
 	_exit(1);
 }
 
-bool CgiHandler::spawn(
+void CgiHandler::spawn(
 	const HttpRequest& req,
 	const Server& server,
 	const Location* loc,
@@ -154,23 +190,22 @@ bool CgiHandler::spawn(
 	const std::string& queryString,
 	CgiProcess& out
 ) {
-	std::string ext         = getFileExtension(filePath);
-	std::string interpreter = _findInterpreter(ext, loc);
+	std::string interpreter = _findInterpreter(getFileExtension(filePath), loc);
 	if (interpreter.empty())
-		return false;
+		throw CgiException("no interpreter configured for: " + filePath);
 
 	std::vector<std::string> envVec = _buildCgiEnv(req, server, filePath, queryString);
 
 	int stdinPipe[2];
 	int stdoutPipe[2];
 	if (!_openPipes(stdinPipe, stdoutPipe))
-		return false;
+		throw CgiException("pipe() failed");
 
 	pid_t pid = fork();
 	if (pid < 0) {
 		close(stdinPipe[0]);  close(stdinPipe[1]);
 		close(stdoutPipe[0]); close(stdoutPipe[1]);
-		return false;
+		throw CgiException("fork() failed");
 	}
 
 	if (pid == 0) {
@@ -188,7 +223,6 @@ bool CgiHandler::spawn(
 	out.pid      = pid;
 	out.stdinFd  = stdinPipe[1];
 	out.stdoutFd = stdoutPipe[0];
-	return true;
 }
 
 bool CgiHandler::_findHeaderBodyBoundary(const std::string& raw,

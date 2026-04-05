@@ -217,14 +217,8 @@ void EventLoop::_processRequest(Connection& conn) {
 	IRouter& router = di.resolve<IRouter>(DI_ROUTER);
 	const Location* location = router.route(*conn.server, pathOnly);
 
-	std::string ext = getFileExtension(pathOnly);
-	if (!ext.empty() && isCgiExtension(ext, location)) {
-		std::string root     = (location && !location->root.empty())
-		                       ? location->root : conn.server->root;
-		std::string filePath = root + pathOnly;
-		_startCgi(conn, req, location, filePath, queryString);
+	if (_tryDispatchCgi(conn, req, pathOnly, queryString, location))
 		return;
-	}
 
 	IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
 	conn.out_buffer = rm.build(req, *conn.server, location);
@@ -262,20 +256,26 @@ void EventLoop::_resetToReading(Connection& conn) {
 	epoll_ctl(_epollFd, EPOLL_CTL_MOD, conn.fd, &ev);
 }
 
-void EventLoop::_startCgi(
+bool EventLoop::_tryDispatchCgi(
 	Connection& conn, const HttpRequest& req,
-	const Location* loc, const std::string& filePath,
-	const std::string& queryString
+	const std::string& pathOnly, const std::string& queryString,
+	const Location* location
 ) {
-	CgiHandler::CgiProcess process;
-	if (!CgiHandler::spawn(req, *conn.server, loc, filePath, queryString, process)) {
-		DIContainer& di = DIContainer::getInstance();
-		IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
-		conn.out_buffer = rm.buildError(500, *conn.server);
-		_prepareWrite(conn);
-		return;
-	}
+	std::string ext = getFileExtension(pathOnly);
+	if (ext.empty() || !isCgiExtension(ext, location))
+		return false;
 
+	std::string root     = (location && !location->root.empty())
+	                       ? location->root : conn.server->root;
+	std::string filePath = root + pathOnly;
+	_startCgi(conn, req, location, filePath, queryString);
+	return true;
+}
+
+void EventLoop::_initCgiContext(
+	Connection& conn, const HttpRequest& req,
+	const CgiHandler::CgiProcess& process
+) {
 	conn.cgi.pid         = process.pid;
 	conn.cgi.stdinFd     = process.stdinFd;
 	conn.cgi.stdoutFd    = process.stdoutFd;
@@ -284,14 +284,18 @@ void EventLoop::_startCgi(
 	conn.cgi.outputBuf.clear();
 	conn.cgi.startTime   = time(NULL);
 	conn.cgi.req         = req;
+}
 
+void EventLoop::_registerCgiPipes(
+	Connection& conn, const CgiHandler::CgiProcess& process
+) {
 	epoll_event ev;
 	ev.events  = EPOLLIN;
 	ev.data.fd = process.stdoutFd;
 	epoll_ctl(_epollFd, EPOLL_CTL_ADD, process.stdoutFd, &ev);
 	_cgiToConn[process.stdoutFd] = conn.fd;
 
-	if (!req.body.empty()) {
+	if (!conn.cgi.inputBuf.empty()) {
 		ev.events  = EPOLLOUT;
 		ev.data.fd = process.stdinFd;
 		epoll_ctl(_epollFd, EPOLL_CTL_ADD, process.stdinFd, &ev);
@@ -302,6 +306,39 @@ void EventLoop::_startCgi(
 		conn.cgi.stdinFd = -1;
 		conn.state = CGI_READING;
 	}
+}
+
+void EventLoop::_startCgi(
+	Connection& conn, const HttpRequest& req,
+	const Location* loc, const std::string& filePath,
+	const std::string& queryString
+) {
+	CgiHandler::CgiProcess process;
+	try {
+		CgiHandler::spawn(req, *conn.server, loc, filePath, queryString, process);
+	} catch (const CgiException& e) {
+		_logger->error(std::string("CGI spawn failed: ") + e.what());
+		DIContainer& di = DIContainer::getInstance();
+		IResponseManager& rm = di.resolve<IResponseManager>(DI_RESPONSE_MANAGER);
+		conn.out_buffer = rm.buildError(500, *conn.server);
+		_prepareWrite(conn);
+		return;
+	}
+	_initCgiContext(conn, req, process);
+	_registerCgiPipes(conn, process);
+}
+
+void EventLoop::_handleCgi(int fd, uint32_t events) {
+	std::map<int, int>::iterator cgiIt = _cgiToConn.find(fd);
+	if (cgiIt == _cgiToConn.end())
+		return;
+	std::map<int, Connection>::iterator connIt = _connections.find(cgiIt->second);
+	if (connIt == _connections.end())
+		return;
+	if (events & EPOLLOUT)
+		_handleCgiWrite(connIt->second);
+	if (events & (EPOLLIN | EPOLLHUP))
+		_handleCgiRead(connIt->second);
 }
 
 void EventLoop::_handleCgiWrite(Connection& conn) {
@@ -410,14 +447,7 @@ void EventLoop::run(std::map<int, Server*>& fdToServer) {
 
 				std::map<int, int>::iterator cgiIt = _cgiToConn.find(fd);
 				if (cgiIt != _cgiToConn.end()) {
-					std::map<int, Connection>::iterator connIt =
-						_connections.find(cgiIt->second);
-					if (connIt != _connections.end()) {
-						if (events[i].events & EPOLLOUT)
-							_handleCgiWrite(connIt->second);
-						if (events[i].events & (EPOLLIN | EPOLLHUP))
-							_handleCgiRead(connIt->second);
-					}
+					_handleCgi(fd, events[i].events);
 					continue;
 				}
 

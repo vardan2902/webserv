@@ -20,6 +20,7 @@
 #include "../http/response-manager/IResponseManager.hpp"
 #include "../http/request-parser/RequestParserException.hpp"
 #include "../http/cgi/CgiHandler.hpp"
+#include "../http/cgi/CgiException.hpp"
 #include "../logger/ILogger.hpp"
 #include "../di/DIContainer.hpp"
 #include "EventLoopException.hpp"
@@ -85,9 +86,17 @@ private:
 	static void        _sweepIdleConnections();
 	static std::string _itoa(int);
 
+	static bool        _tryDispatchCgi(Connection&, const HttpRequest&,
+	                                   const std::string& pathOnly,
+	                                   const std::string& queryString,
+	                                   const Location*);
 	static void        _startCgi(Connection&, const HttpRequest&,
 	                              const Location*, const std::string& filePath,
 	                              const std::string& queryString);
+	static void        _initCgiContext(Connection&, const HttpRequest&,
+	                                   const CgiHandler::CgiProcess&);
+	static void        _registerCgiPipes(Connection&, const CgiHandler::CgiProcess&);
+	static void        _handleCgi(int fd, uint32_t events);
 	static void        _handleCgiWrite(Connection&);
 	static void        _handleCgiRead(Connection&);
 	static void        _cleanupCgi(Connection&);

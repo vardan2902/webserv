@@ -6,6 +6,7 @@
 
 #include "../../config.hpp"
 #include "../types.hpp"
+#include "CgiException.hpp"
 
 void        splitPathAndQuery(const std::string& reqPath,
                                std::string& pathOnly, std::string& query);
@@ -22,7 +23,7 @@ public:
 		CgiProcess() : pid(-1), stdinFd(-1), stdoutFd(-1) {}
 	};
 
-	static bool         spawn(const HttpRequest& req, const Server& server,
+	static void         spawn(const HttpRequest& req, const Server& server,
 	                           const Location* loc, const std::string& filePath,
 	                           const std::string& queryString, CgiProcess& out);
 	static HttpResponse parseResponse(const std::string& raw);
@@ -34,6 +35,14 @@ private:
 	                                               const Server& server,
 	                                               const std::string& filePath,
 	                                               const std::string& queryString);
+	static void _addGatewayVars(std::vector<std::string>& env);
+	static void _addServerVars(std::vector<std::string>& env,
+	                            const Server& server, const HttpRequest& req);
+	static void _addRequestVars(std::vector<std::string>& env, const HttpRequest& req,
+	                             const std::string& filePath,
+	                             const std::string& queryString);
+	static void _addContentVars(std::vector<std::string>& env, const HttpRequest& req);
+	static void _addHttpHeaderVars(std::vector<std::string>& env, const HttpRequest& req);
 	static bool                     _openPipes(int stdinPipe[2], int stdoutPipe[2]);
 	static void                     _execCgiProcess(int stdinRead, int stdoutWrite,
 	                                                 const std::string& interpreter,
