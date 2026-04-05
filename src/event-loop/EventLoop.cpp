@@ -1,7 +1,5 @@
 #include "EventLoop.hpp"
 
-#include "../listener-factory/utils/ListenerUtils.hpp"
-
 std::string EventLoop::_itoa(int n) {
 	std::ostringstream oss;
 	oss << n;

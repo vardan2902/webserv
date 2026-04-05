@@ -23,6 +23,8 @@
 #include "../http/cgi/CgiException.hpp"
 #include "../logger/ILogger.hpp"
 #include "../di/DIContainer.hpp"
+#include "../listener-factory/utils/ListenerUtils.hpp"
+
 #include "EventLoopException.hpp"
 
 #define BUFFER_SIZE       1024

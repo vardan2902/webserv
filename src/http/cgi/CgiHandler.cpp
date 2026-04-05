@@ -1,12 +1,4 @@
 #include "CgiHandler.hpp"
-#include "CgiException.hpp"
-
-#include <unistd.h>
-#include <fcntl.h>
-#include <cstdlib>
-#include <sstream>
-#include <cctype>
-#include <sys/wait.h>
 
 void splitPathAndQuery(const std::string& reqPath,
                         std::string& pathOnly, std::string& query) {

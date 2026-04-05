@@ -3,10 +3,16 @@
 #include <string>
 #include <vector>
 #include <sys/types.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <cstdlib>
+#include <sstream>
+#include <cctype>
+#include <sys/wait.h>
 
+#include "CgiException.hpp"
 #include "../../config.hpp"
 #include "../types.hpp"
-#include "CgiException.hpp"
 
 void        splitPathAndQuery(const std::string& reqPath,
                                std::string& pathOnly, std::string& query);
