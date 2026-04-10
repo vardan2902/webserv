@@ -79,20 +79,11 @@ void EventLoop::_handleAcceptConnection(int fd) {
 	}
 }
 
-static bool _headersComplete(const std::string& buf, size_t& headerEnd) {
-	size_t pos = buf.find("\r\n\r\n");
-	if (pos == std::string::npos)
-		return false;
-	headerEnd = pos + 4;
-	return true;
-}
-
 // Parses Content-Length or detects chunked from the header block (called once per request).
 static void _parseBodyMeta(Connection& conn) {
 	const std::string& buf = conn.in_buffer;
 	size_t headerEnd = conn.headerEndCache;
 
-	// Only look at the header section, no substr copy needed — scan in-place.
 	const std::string clKey = "Content-Length: ";
 	size_t clPos = buf.find(clKey, 0);
 	if (clPos != std::string::npos && clPos < headerEnd) {
@@ -111,7 +102,6 @@ static void _parseBodyMeta(Connection& conn) {
 	size_t tePos = buf.find(teKey, 0);
 	if (tePos != std::string::npos && tePos < headerEnd) {
 		conn.contentLength = -1;  // chunked
-		conn.searchPos     = headerEnd;
 		return;
 	}
 
@@ -148,33 +138,40 @@ void EventLoop::_handleRead(Connection& conn) {
 		return;
 	}
 
-	size_t prevSize = conn.in_buffer.size();
 	conn.in_buffer.append(buf, bytes);
 
-	// Step 1: locate end of headers (done once; result cached on conn).
+	// Step 1: locate end of headers.
+	// searchPos tracks where we left off so we never re-scan old bytes.
 	if (conn.headerEndCache == 0) {
-		size_t headerEnd = 0;
-		if (!_headersComplete(conn.in_buffer, headerEnd))
+		// Overlap by 3 so \r\n\r\n split across two reads is never missed.
+		size_t from = conn.searchPos > 3 ? conn.searchPos - 3 : 0;
+		size_t pos  = conn.in_buffer.find("\r\n\r\n", from);
+		if (pos == std::string::npos) {
+			conn.searchPos = conn.in_buffer.size();
 			return;
-		conn.headerEndCache = headerEnd;
+		}
+		conn.headerEndCache = pos + 4;
+		conn.searchPos      = conn.headerEndCache;  // body starts here
 		_parseBodyMeta(conn);
+		if (conn.contentLength > 0)
+			conn.in_buffer.reserve(conn.headerEndCache + static_cast<size_t>(conn.contentLength));
 	}
 
-	// Step 2: check body completeness without re-scanning old bytes.
+	// Step 2: check body completeness, never re-scanning old bytes.
 	if (conn.contentLength == 0) {
 		// No body — ready immediately.
 	} else if (conn.contentLength > 0) {
-		// Content-Length: one size comparison, O(1).
+		// Content-Length: O(1) size check.
 		if (conn.in_buffer.size() < conn.headerEndCache + static_cast<size_t>(conn.contentLength))
 			return;
 	} else {
-		// Chunked: search only from the overlap point (last 4 bytes of prev data + new bytes).
-		size_t searchFrom = (prevSize > 4) ? prevSize - 4 : conn.headerEndCache;
-		if (searchFrom < conn.headerEndCache)
-			searchFrom = conn.headerEndCache;
-		size_t found = conn.in_buffer.find("0\r\n\r\n", searchFrom);
-		if (found == std::string::npos)
+		// Chunked: resume from searchPos (overlap 4 bytes for boundary safety).
+		size_t from  = conn.searchPos > 4 ? conn.searchPos - 4 : conn.headerEndCache;
+		size_t found = conn.in_buffer.find("0\r\n\r\n", from);
+		if (found == std::string::npos) {
+			conn.searchPos = conn.in_buffer.size();
 			return;
+		}
 	}
 
 	_processRequest(conn);
@@ -291,7 +288,7 @@ void EventLoop::_resetToReading(Connection& conn) {
 }
 
 bool EventLoop::_tryDispatchCgi(
-	Connection& conn, const HttpRequest& req,
+	Connection& conn, HttpRequest& req,
 	const std::string& pathOnly, const std::string& queryString,
 	const Location* location
 ) {
@@ -307,13 +304,13 @@ bool EventLoop::_tryDispatchCgi(
 }
 
 void EventLoop::_initCgiContext(
-	Connection& conn, const HttpRequest& req,
+	Connection& conn, HttpRequest& req,
 	const CgiHandler::CgiProcess& process
 ) {
 	conn.cgi.pid         = process.pid;
 	conn.cgi.stdinFd     = process.stdinFd;
 	conn.cgi.stdoutFd    = process.stdoutFd;
-	conn.cgi.inputBuf    = req.body;
+	conn.cgi.inputBuf.swap(req.body);  // steal body — no 100 MB copy
 	conn.cgi.inputOffset = 0;
 	conn.cgi.outputBuf.clear();
 	conn.cgi.startTime   = time(NULL);
@@ -343,7 +340,7 @@ void EventLoop::_registerCgiPipes(
 }
 
 void EventLoop::_startCgi(
-	Connection& conn, const HttpRequest& req,
+	Connection& conn, HttpRequest& req,
 	const Location* loc, const std::string& filePath,
 	const std::string& queryString
 ) {

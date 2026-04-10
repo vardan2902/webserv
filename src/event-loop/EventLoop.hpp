@@ -27,7 +27,7 @@
 
 #include "EventLoopException.hpp"
 
-#define BUFFER_SIZE       1024
+#define BUFFER_SIZE       65536
 #define MAX_EVENTS        128
 #define IDLE_TIMEOUT_SECS 60
 #define EPOLL_TIMEOUT_MS  5000
@@ -98,14 +98,14 @@ private:
 	static void        _sweepIdleConnections();
 	static std::string _itoa(int);
 
-	static bool        _tryDispatchCgi(Connection&, const HttpRequest&,
+	static bool        _tryDispatchCgi(Connection&, HttpRequest&,
 	                                   const std::string& pathOnly,
 	                                   const std::string& queryString,
 	                                   const Location*);
-	static void        _startCgi(Connection&, const HttpRequest&,
+	static void        _startCgi(Connection&, HttpRequest&,
 	                              const Location*, const std::string& filePath,
 	                              const std::string& queryString);
-	static void        _initCgiContext(Connection&, const HttpRequest&,
+	static void        _initCgiContext(Connection&, HttpRequest&,
 	                                   const CgiHandler::CgiProcess&);
 	static void        _registerCgiPipes(Connection&, const CgiHandler::CgiProcess&);
 	static void        _handleCgi(int fd, uint32_t events);
