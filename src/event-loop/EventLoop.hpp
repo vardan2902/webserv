@@ -64,6 +64,16 @@ struct Connection {
 	int         clientPort;
 	time_t      lastActivity;
 	CgiContext  cgi;
+
+	// Body-completion tracking (avoids O(N²) re-scan on every read event)
+	size_t      headerEndCache;  // 0 = headers not yet complete; >0 = body start offset
+	ssize_t     contentLength;   // -2 = unknown, -1 = chunked, 0 = no body, >0 = expected size
+	size_t      searchPos;       // for chunked: resume find("0\r\n\r\n") from here
+
+	Connection()
+		: fd(-1), bytes_sent(0), state(READING),
+		  server(NULL), clientPort(0), lastActivity(0),
+		  headerEndCache(0), contentLength(-2), searchPos(0) {}
 };
 
 class EventLoop {

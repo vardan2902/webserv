@@ -87,26 +87,35 @@ static bool _headersComplete(const std::string& buf, size_t& headerEnd) {
 	return true;
 }
 
-static bool _bodyComplete(const std::string& buf, size_t headerEnd) {
-	std::string headers = buf.substr(0, headerEnd);
+// Parses Content-Length or detects chunked from the header block (called once per request).
+static void _parseBodyMeta(Connection& conn) {
+	const std::string& buf = conn.in_buffer;
+	size_t headerEnd = conn.headerEndCache;
 
-	if (headers.find("Transfer-Encoding: chunked") != std::string::npos)
-		return buf.find("0\r\n\r\n", headerEnd) != std::string::npos;
+	// Only look at the header section, no substr copy needed — scan in-place.
+	const std::string clKey = "Content-Length: ";
+	size_t clPos = buf.find(clKey, 0);
+	if (clPos != std::string::npos && clPos < headerEnd) {
+		size_t valueStart = clPos + clKey.size();
+		size_t valueEnd   = buf.find("\r\n", valueStart);
+		if (valueEnd != std::string::npos && valueEnd < headerEnd) {
+			std::istringstream iss(buf.substr(valueStart, valueEnd - valueStart));
+			ssize_t cl = 0;
+			iss >> cl;
+			conn.contentLength = cl;
+			return;
+		}
+	}
 
-	std::string clKey = "Content-Length: ";
-	size_t clPos = headers.find(clKey);
-	if (clPos == std::string::npos)
-		return true;
+	const std::string teKey = "Transfer-Encoding: chunked";
+	size_t tePos = buf.find(teKey, 0);
+	if (tePos != std::string::npos && tePos < headerEnd) {
+		conn.contentLength = -1;  // chunked
+		conn.searchPos     = headerEnd;
+		return;
+	}
 
-	size_t valueStart = clPos + clKey.length();
-	size_t valueEnd = headers.find("\r\n", valueStart);
-	if (valueEnd == std::string::npos)
-		return false;
-
-	size_t contentLength = 0;
-	std::istringstream iss(headers.substr(valueStart, valueEnd - valueStart));
-	iss >> contentLength;
-	return buf.size() >= headerEnd + contentLength;
+	conn.contentLength = 0;  // no body
 }
 
 void EventLoop::_closeConnection(int fd) {
@@ -139,13 +148,34 @@ void EventLoop::_handleRead(Connection& conn) {
 		return;
 	}
 
+	size_t prevSize = conn.in_buffer.size();
 	conn.in_buffer.append(buf, bytes);
 
-	size_t headerEnd = 0;
-	if (!_headersComplete(conn.in_buffer, headerEnd))
-		return;
-	if (!_bodyComplete(conn.in_buffer, headerEnd))
-		return;
+	// Step 1: locate end of headers (done once; result cached on conn).
+	if (conn.headerEndCache == 0) {
+		size_t headerEnd = 0;
+		if (!_headersComplete(conn.in_buffer, headerEnd))
+			return;
+		conn.headerEndCache = headerEnd;
+		_parseBodyMeta(conn);
+	}
+
+	// Step 2: check body completeness without re-scanning old bytes.
+	if (conn.contentLength == 0) {
+		// No body — ready immediately.
+	} else if (conn.contentLength > 0) {
+		// Content-Length: one size comparison, O(1).
+		if (conn.in_buffer.size() < conn.headerEndCache + static_cast<size_t>(conn.contentLength))
+			return;
+	} else {
+		// Chunked: search only from the overlap point (last 4 bytes of prev data + new bytes).
+		size_t searchFrom = (prevSize > 4) ? prevSize - 4 : conn.headerEndCache;
+		if (searchFrom < conn.headerEndCache)
+			searchFrom = conn.headerEndCache;
+		size_t found = conn.in_buffer.find("0\r\n\r\n", searchFrom);
+		if (found == std::string::npos)
+			return;
+	}
 
 	_processRequest(conn);
 }
@@ -250,6 +280,9 @@ void EventLoop::_resetToReading(Connection& conn) {
 	conn.out_buffer.clear();
 	conn.bytes_sent = 0;
 	conn.state = READING;
+	conn.headerEndCache = 0;
+	conn.contentLength  = -2;
+	conn.searchPos      = 0;
 
 	epoll_event ev;
 	ev.events = EPOLLIN;
