@@ -271,7 +271,7 @@ void EventLoop::_handleWrite(Connection& conn) {
 	size_t remaining = conn.out_buffer.size() - conn.bytes_sent;
 
 	ssize_t sent = write(conn.fd, data, remaining);
-	if (sent < 0) {
+	if (sent <= 0) {
 		_closeConnection(conn.fd);
 		return;
 	}
@@ -392,8 +392,11 @@ void EventLoop::_handleCgiWrite(Connection& conn) {
 
 	if (remaining > 0) {
 		ssize_t written = write(conn.cgi.stdinFd, data, remaining);
-		if (written > 0)
-			conn.cgi.inputOffset += static_cast<size_t>(written);
+		if (written <= 0) {
+			_abortCgi(conn, 500);
+			return;
+		}
+		conn.cgi.inputOffset += static_cast<size_t>(written);
 	}
 
 	if (conn.cgi.inputOffset >= conn.cgi.inputBuf.size()) {
@@ -501,7 +504,9 @@ void EventLoop::run(std::map<int, Server*>& fdToServer) {
 				if (connection == _connections.end())
 					continue;
 
-				if (events[i].events & EPOLLIN)
+				if (events[i].events & (EPOLLHUP | EPOLLERR))
+					_closeConnection(fd);
+				else if (events[i].events & EPOLLIN)
 					_handleRead(connection->second);
 				else if (events[i].events & EPOLLOUT)
 					_handleWrite(connection->second);
