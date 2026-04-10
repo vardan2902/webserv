@@ -203,17 +203,20 @@ void EventLoop::_processRequest(Connection& conn) {
 		return;
 	}
 
-	if (conn.server->clientMaxBodySize > 0 && req.body.size() > conn.server->clientMaxBodySize) {
-		_logAccess(conn, req, 413, std::string("413 Content Too Large").size());
-		_rejectOversizedBody(conn);
-		return;
-	}
-
 	std::string pathOnly, queryString;
 	splitPathAndQuery(req.path, pathOnly, queryString);
 
 	IRouter& router = di.resolve<IRouter>(DI_ROUTER);
 	const Location* location = router.route(*conn.server, pathOnly);
+
+	size_t maxBody = location && location->clientMaxBodySize > 0
+	    ? location->clientMaxBodySize
+	    : conn.server->clientMaxBodySize;
+	if (maxBody > 0 && req.body.size() > maxBody) {
+		_logAccess(conn, req, 413, std::string("413 Content Too Large").size());
+		_rejectOversizedBody(conn);
+		return;
+	}
 
 	if (_tryDispatchCgi(conn, req, pathOnly, queryString, location))
 		return;

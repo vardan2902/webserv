@@ -214,6 +214,20 @@ void Parser::_parseCgiExt(Location& loc) {
     loc.cgiExtensions[extTok.value] = pathTok.value;
 }
 
+void Parser::_parseLocationClientMaxBodySize(Location& loc) {
+    Token valueTok = expect(Word, EMPTY_STRING, "Expected value for 'client_max_body_size'");
+    expect(Semicolon, EMPTY_STRING, "Missing semicolon for 'client_max_body_size'");
+    const std::string& value = valueTok.value;
+    char* end;
+    long size = std::strtol(value.c_str(), &end, 10);
+    if (end == value.c_str())
+        throw ParserException("Invalid client_max_body_size value: " + value);
+    if (*end == 'k' || *end == 'K') size *= 1024;
+    else if (*end == 'm' || *end == 'M') size *= 1024 * 1024;
+    else if (*end == 'g' || *end == 'G') size *= 1024 * 1024 * 1024;
+    loc.clientMaxBodySize = static_cast<size_t>(size);
+}
+
 void Parser::parseLocationDirective(Location& loc) {
     Token keyTok = expect(Word, EMPTY_STRING, "Expected location directive");
     const std::string& key = keyTok.value;
@@ -229,7 +243,8 @@ void Parser::parseLocationDirective(Location& loc) {
         handlers[ALLOW_METHODS_DIRECTIVE] = &Parser::_parseAllowMethods;
         handlers[RETURN_DIRECTIVE]        = &Parser::_parseReturn;
         handlers[UPLOAD_STORE_DIRECTIVE]  = &Parser::_parseUploadStore;
-        handlers[CGI_EXT_DIRECTIVE]       = &Parser::_parseCgiExt;
+        handlers[CGI_EXT_DIRECTIVE]               = &Parser::_parseCgiExt;
+        handlers[CLIENT_MAX_BODY_SIZE_DIRECTIVE]  = &Parser::_parseLocationClientMaxBodySize;
     }
 
     LocationHandlerMap::iterator it = handlers.find(key);

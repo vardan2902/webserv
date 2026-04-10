@@ -84,10 +84,10 @@ void CgiHandler::_addRequestVars(
 
 	std::string pathOnly, dummy;
 	splitPathAndQuery(req.path, pathOnly, dummy);
-	env.push_back("SCRIPT_NAME=" + pathOnly);
+	env.push_back("SCRIPT_NAME=");
 	env.push_back("SCRIPT_FILENAME=" + filePath);
-	env.push_back("PATH_INFO=");
-	env.push_back("PATH_TRANSLATED=");
+	env.push_back("PATH_INFO=" + pathOnly);
+	env.push_back("PATH_TRANSLATED=" + filePath);
 	env.push_back("QUERY_STRING=" + queryString);
 }
 

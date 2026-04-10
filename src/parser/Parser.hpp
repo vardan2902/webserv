@@ -47,6 +47,7 @@ private:
     void _parseReturn(Location&);
     void _parseUploadStore(Location&);
     void _parseCgiExt(Location&);
+    void _parseLocationClientMaxBodySize(Location&);
 
     Token expect(
         Type type,

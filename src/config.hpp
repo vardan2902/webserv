@@ -9,6 +9,7 @@
 struct Location {
     bool                        autoindex;
     int                         returnCode;
+    size_t                      clientMaxBodySize;
     std::string                 returnUrl;
     std::string                 path;
     std::string                 root;
@@ -16,7 +17,7 @@ struct Location {
     std::vector<std::string>    allowMethods;
     std::string                 uploadStore;
     std::map<std::string, std::string> cgiExtensions; // ".py" → "/usr/bin/python3"
-    Location() : autoindex(false), returnCode(0) {}
+    Location() : autoindex(false), returnCode(0), clientMaxBodySize(0) {}
 };
 
 struct Server {
