@@ -83,7 +83,9 @@ private:
 	static std::map<int, Connection> _connections;
 	static std::map<int, int>        _cgiToConn;  // cgi pipe fd → client fd
 	static ILogger*                  _logger;
+	static volatile sig_atomic_t     _running;
 
+	static void        _signalHandler(int sig);
 	static void        registerListener(const std::pair<const int, IListener*>&);
 	static void        _handleAcceptConnection(int);
 	static void        _closeConnection(int);
@@ -97,6 +99,7 @@ private:
 	static void        _logResponse(const Connection&, const HttpRequest&);
 	static void        _sweepIdleConnections();
 	static std::string _itoa(int);
+	static void        _cleanup();
 
 	static bool        _tryDispatchCgi(Connection&, HttpRequest&,
 	                                   const std::string& pathOnly,

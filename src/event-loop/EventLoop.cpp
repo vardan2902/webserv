@@ -11,14 +11,24 @@ std::map<int, Server*>*   EventLoop::_fdToServer = NULL;
 std::map<int, Connection> EventLoop::_connections;
 std::map<int, int>        EventLoop::_cgiToConn;
 ILogger*                  EventLoop::_logger     = NULL;
+volatile sig_atomic_t     EventLoop::_running    = 0;
+
+void EventLoop::_signalHandler(int sig) {
+	(void)sig;
+	_running = 0;
+}
 
 void EventLoop::initPoll() {
 	_epollFd = epoll_create(1);
 	if (_epollFd == -1)
 		throw EventLoopException("epoll_create() failed");
 
-	signal(SIGCHLD, SIG_IGN);  // auto-reap CGI child processes
-	signal(SIGPIPE, SIG_IGN);  // ignore broken pipe on CGI stdin write
+	_running = 1;
+
+	signal(SIGINT,  _signalHandler);  // graceful shutdown on Ctrl+C
+	signal(SIGTERM, _signalHandler);  // graceful shutdown on kill
+	signal(SIGCHLD, SIG_IGN);        // auto-reap CGI child processes
+	signal(SIGPIPE, SIG_IGN);        // ignore broken pipe on CGI stdin write
 }
 
 void EventLoop::registerListener(const std::pair<const int, IListener *>& socket) {
@@ -464,7 +474,7 @@ void EventLoop::run(std::map<int, Server*>& fdToServer) {
 
 	struct epoll_event events[MAX_EVENTS];
 
-	while (true) {
+	while (_running) {
 		try {
 			int n = epoll_wait(_epollFd, events, MAX_EVENTS, EPOLL_TIMEOUT_MS);
 			if (n == -1) {
@@ -505,6 +515,21 @@ void EventLoop::run(std::map<int, Server*>& fdToServer) {
 		} catch (...) {
 			_logger->error("unexpected error in event loop");
 		}
+	}
+	_cleanup();
+}
+
+void EventLoop::_cleanup() {
+	std::vector<int> fds;
+	for (std::map<int, Connection>::iterator it = _connections.begin();
+	     it != _connections.end(); ++it)
+		fds.push_back(it->first);
+	for (size_t i = 0; i < fds.size(); ++i)
+		_closeConnection(fds[i]);
+
+	if (_epollFd >= 0) {
+		close(_epollFd);
+		_epollFd = -1;
 	}
 }
 

@@ -149,6 +149,13 @@ void CgiHandler::_execCgiProcess(
 	const std::string& filePath,
 	const std::vector<std::string>& envVec
 ) {
+	// Reset all signal handlers to defaults — child inherits parent's SIG_IGN
+	// dispositions (SIGCHLD, SIGPIPE) and custom handlers (SIGINT, SIGTERM).
+	signal(SIGINT,  SIG_DFL);
+	signal(SIGTERM, SIG_DFL);
+	signal(SIGCHLD, SIG_DFL);
+	signal(SIGPIPE, SIG_DFL);
+
 	if (dup2(stdinRead, STDIN_FILENO) < 0)   _exit(1);
 	if (dup2(stdoutWrite, STDOUT_FILENO) < 0) _exit(1);
 	close(stdinRead);
