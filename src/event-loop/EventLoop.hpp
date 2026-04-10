@@ -31,7 +31,7 @@
 #define MAX_EVENTS        128
 #define IDLE_TIMEOUT_SECS 60
 #define EPOLL_TIMEOUT_MS  5000
-#define CGI_TIMEOUT_SECS  10
+#define CGI_TIMEOUT_SECS  60
 
 typedef enum State {
 	READING,

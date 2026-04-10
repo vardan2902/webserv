@@ -356,6 +356,8 @@ void EventLoop::_startCgi(
 		return;
 	}
 	_initCgiContext(conn, req, process);
+	// Body is now in cgi.inputBuf — release in_buffer immediately (up to 100 MB).
+	{ std::string tmp; tmp.swap(conn.in_buffer); }
 	_registerCgiPipes(conn, process);
 }
 
@@ -389,6 +391,9 @@ void EventLoop::_handleCgiWrite(Connection& conn) {
 		_cgiToConn.erase(conn.cgi.stdinFd);
 		close(conn.cgi.stdinFd);
 		conn.cgi.stdinFd = -1;
+		// Release the body buffer now that CGI has consumed it (up to 100 MB).
+		{ std::string tmp; tmp.swap(conn.cgi.inputBuf); }
+		conn.cgi.inputOffset = 0;
 		conn.state = CGI_READING;
 	}
 }
